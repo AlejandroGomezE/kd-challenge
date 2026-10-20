@@ -13,7 +13,7 @@ Postgres locally, TanStack Query, Zod, Vitest, Playwright.
 | | |
 |---|---|
 | Repository | https://github.com/AlejandroGomezE/kd-challenge |
-| Commit | _see [Submitted commit](#submitted-commit) below_ |
+| Commit | `e669357e4fe42ab6bdceb807354aee3f054c01d1` (merge of PR #1 — the deployed code); later commits on `main` are docs-only |
 | Deployed app | https://kd-challenge.vercel.app |
 | Test logins | **Supplied privately** (one shared password for the three seed users below) |
 | Spec | [`docs/build-spec.md`](docs/build-spec.md) |
@@ -166,7 +166,7 @@ API: `GET /api/me/tenants`, `GET|POST /api/tenants/:slug/projects`,
   pulled to a local shell to seed from there.
 - **Access:** Deployment Protection is off, so the reviewer can reach the app.
 
-_Deployed smoke output: see [Submitted commit](#submitted-commit)._
+_Deployed smoke output: see [Submitted commit](#submitted-commit) below._
 
 ## Limitations (honest)
 
@@ -188,4 +188,35 @@ _Deployed smoke output: see [Submitted commit](#submitted-commit)._
 
 ## Submitted commit
 
-_Filled in after merge._
+- **Code / deployed commit:** `e669357e4fe42ab6bdceb807354aee3f054c01d1` — merge of
+  [PR #1](https://github.com/AlejandroGomezE/kd-challenge/pull/1) into `main`. Vercel production
+  deployment `kd-challenge-k4s157qpc` was built from exactly this SHA and serves
+  https://kd-challenge.vercel.app.
+- The build log for that deployment shows `prisma migrate deploy` (2 migrations, none pending —
+  already applied by the preview build) and `Seeded 2 tenants, 3 users.`
+- Any later commit on `main` changes documentation only (this section).
+
+Smoke test against production, 2026-10-19 after the merge:
+
+```text
+$ scripts/smoke-authz https://kd-challenge.vercel.app
+TenantDesk authorization smoke — https://kd-challenge.vercel.app
+  PASS  no session: GET /api/tenants/acme/projects                 401
+  PASS  no session: POST /api/tenants/acme/projects                401
+  PASS  sign in Ada (Acme admin)                                   200
+  PASS  sign in Vic (Acme viewer)                                  200
+  PASS  Ada can't see any Globex project id                        
+  PASS  Ada: GET Acme projects                                     200
+  PASS  Ada: GET Globex projects                                   404
+  PASS  Ada: POST into Globex                                      404
+  PASS  Ada: client-supplied tenantId is rejected                  400
+  PASS  Ada: invalid name                                          400
+  PASS  Vic: GET Acme projects                                     200
+  PASS  Vic: POST (viewer write)                                   403
+  PASS  Vic: PATCH (viewer write)                                  403
+
+All checks passed.
+```
+
+The same script passed 13/13 against the branch preview
+(`kd-challenge-git-tenantdesk-…vercel.app`) before the merge.
