@@ -1,0 +1,26 @@
+# Local Postgres for dev and tests: `docker compose up -d`.
+# Host port 5433 (not 5432) so it doesn't collide with a Postgres already running on the host.
+# Databases: tenantdesk (dev) and tenantdesk_test (integration/e2e suites only).
+# `docker compose down -v` wipes both.
+name: tenantdesk
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: tenantdesk
+      POSTGRES_PASSWORD: tenantdesk
+      POSTGRES_DB: tenantdesk
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./scripts/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenantdesk -d tenantdesk"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pg-data:

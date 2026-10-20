@@ -1,7 +1,7 @@
 ---
 title: App architecture
 type: infra
-summary: TenantDesk is one Next.js App Router app at the repo root (strict TS, Node runtime) — route handlers as the API, a Route handler → Service → Repository → Prisma layering under src/server/, Better Auth sessions, TanStack Query on the client, and the test tiers. Target state from docs/build-spec.md; update to "active" once the code exists.
+summary: TenantDesk is one Next.js 16 App Router app at the repo root (strict TS, Node runtime) — route handlers as the API, a Route handler → Service → Repository → Prisma layering under src/server/, Better Auth sessions, TanStack Query on the client, and the test tiers. Target state from docs/build-spec.md; update to "active" once the code exists.
 status: planned
 last-verified: 2026-10-19
 tags: [nextjs, react, architecture, prisma, better-auth, tanstack-query, tests]
@@ -78,7 +78,8 @@ Prisma → Postgres
 - Sessions are rows in Postgres; the cookie is HttpOnly / SameSite=Lax / Secure in production.
 - Server: `auth.api.getSession({ headers })` → `requireSession` in `tenancy.service.ts`. Nothing
   else reads cookies.
-- Middleware (if any) only redirects signed-out page visits — it is not an authorization layer.
+- `src/proxy.ts` (Next 16's renamed middleware), if any, only redirects signed-out page visits —
+  it is not an authorization layer.
 
 ## API conventions
 
@@ -113,6 +114,34 @@ touch a real database.
 
 Scripts (`package.json`): `dev`, `build`, `start`, `lint`, `typecheck`, `test` (unit),
 `test:integration`, `test:e2e`, `db:migrate`, `db:seed`.
+
+## Starter facts & gotchas (verified 2026-10-19)
+
+Versions: Next 16.4.2, React 19.3, Better Auth 1.7.11, Prisma 7.10.1 (stable — `latest` on npm
+points at an 8.0 RC; don't take it), `@prisma/adapter-pg`, Vitest 5, Playwright 1.64, Node 24.
+
+- **Next 16:** middleware is `proxy.ts` (Node runtime by default); Edge runtime is deprecated;
+  `params` is a `Promise`; **`cacheComponents: true`** is on — a page/component that reads
+  `cookies()`/`headers()`/the session must sit under `<Suspense>` or the build fails. Route
+  handlers that read the request are dynamic automatically. Read
+  `node_modules/next/dist/docs/01-app/02-guides/authentication-with-cache-components.md` before
+  reading the session in a server component.
+- **Types:** `LayoutProps`/`PageProps` are generated — `npm run typecheck` runs `next typegen` first.
+- **Prisma 7:** URLs live in `prisma.config.ts` (CLI uses `DATABASE_URL_UNPOOLED`; the app's
+  `PrismaPg` adapter uses `DATABASE_URL`). Client is generated to `src/generated/prisma`
+  (gitignored; `postinstall` regenerates). **`migrate dev` does not regenerate the client** — run
+  `npx prisma generate` after every schema change, or Better Auth reports "Prisma schema
+  mismatch / Missing tables" at build.
+- **`src/server/db.ts` imports the client relatively** (`../generated/prisma/client`), not via
+  `@/`, so non-Next tooling (Better Auth CLI, seed script) can load it.
+- **Better Auth CLI** is the `auth` package now (`npx auth@1.7.11 generate --config
+  src/server/auth.ts --output prisma/schema.prisma`); `@better-auth/cli` is deprecated. It can't
+  load files importing `server-only` — remove that line from `auth.ts`/`db.ts` for the run, restore
+  after. Better Auth tables are mapped lowercase (`"user"`, `"session"`, `"account"`,
+  `"verification"`).
+- **Local Postgres** is on host port **5433** (5432 is taken by a host Postgres on Alejandro's
+  machine).
+- **`next start` renames its process** to `next-server (vX)`; `scripts/down` finds it by cwd.
 
 ## Open questions
 

@@ -167,8 +167,8 @@ README states exactly which one shipped — never claim RLS that isn't enforced 
   slice — no member management.) Insufficient role → **403**.
 - **Object scoping** — `projectId` lookups are always `where: { id, tenantId }`. A project from
   another tenant under your own tenant's URL → **404**.
-- **Middleware** may redirect signed-out page visits for UX; it is **never** an authorization
-  layer. Every route handler and server component checks for itself.
+- **Proxy** (`src/proxy.ts`, Next 16's renamed middleware) may redirect signed-out page visits for
+  UX; it is **never** an authorization layer. Every route handler and server component checks for itself.
 - **CSRF** — writes require `Content-Type: application/json` (rejected otherwise, 415); session
   cookie is `HttpOnly`, `SameSite=Lax`, `Secure` in production (Better Auth defaults).
 
