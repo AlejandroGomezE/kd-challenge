@@ -5,7 +5,7 @@ starting conditions comparable and honest. See [`build-spec.md`](build-spec.md) 
 
 ## Previous code
 
-- Prior NestJS + Vite starter lived at commit: `<sha>` (removed/archived in commit `<sha>`).
+- Prior NestJS + Vite starter lived at commit: `b52cb704c3c052d58658c6eb757cf8db1d947387` (removed in the next commit on branch `pre-timer-starter`).
 
 ## Starter
 
