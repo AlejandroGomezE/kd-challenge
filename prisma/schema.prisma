@@ -18,6 +18,8 @@ model User {
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
   accounts      Account[]
+  memberships   Membership[]
+  auditEntries  AuditEntry[]
 
   @@unique([email])
   @@map("user")
@@ -69,4 +71,67 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+enum Role {
+  viewer
+  editor
+  admin
+}
+
+enum AuditAction {
+  project_created
+  project_renamed
+}
+
+model Tenant {
+  id           String       @id @default(cuid())
+  slug         String       @unique
+  name         String
+  createdAt    DateTime     @default(now())
+  memberships  Membership[]
+  projects     Project[]
+  auditEntries AuditEntry[]
+}
+
+model Membership {
+  tenantId  String
+  userId    String
+  role      Role
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, userId])
+  @@index([userId])
+}
+
+model Project {
+  id           String       @id @default(cuid())
+  tenantId     String
+  name         String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  auditEntries AuditEntry[]
+
+  // Target of AuditEntry's composite FK: an audit row can only reference a project in its own tenant.
+  @@unique([tenantId, id])
+  @@index([tenantId, createdAt])
+}
+
+model AuditEntry {
+  id          String      @id @default(cuid())
+  tenantId    String
+  projectId   String
+  actorUserId String
+  action      AuditAction
+  data        Json
+  createdAt   DateTime    @default(now())
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project     Project     @relation(fields: [tenantId, projectId], references: [tenantId, id], onDelete: Cascade)
+  actor       User        @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, projectId])
 }

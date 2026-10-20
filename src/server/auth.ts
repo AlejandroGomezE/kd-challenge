@@ -6,6 +6,7 @@ import { db } from "./db";
 
 export const auth = betterAuth({
   database: prismaAdapter(db, { provider: "postgresql" }),
-  emailAndPassword: { enabled: true },
+  // No invitations or sign-up in scope: accounts come from prisma/seed.ts only.
+  emailAndPassword: { enabled: true, disableSignUp: true },
   plugins: [nextCookies()],
 });

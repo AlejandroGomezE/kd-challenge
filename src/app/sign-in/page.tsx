@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 
 export default function SignInPage() {
+  const router = useRouter();
   const { data: session, isPending } = authClient.useSession();
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
@@ -18,21 +20,15 @@ export default function SignInPage() {
       password: String(form.get("password")),
     });
     setSubmitting(false);
-    if (error) setError(error.message ?? "Sign-in failed");
+    if (error) setError(error.status === 401 ? "Invalid email or password" : (error.message ?? "Sign-in failed"));
+    else router.replace("/");
   }
 
-  if (isPending) return <main className="p-6">Loading…</main>;
+  useEffect(() => {
+    if (session) router.replace("/");
+  }, [session, router]);
 
-  if (session) {
-    return (
-      <main className="mx-auto flex w-full max-w-md flex-col gap-4 p-6">
-        <p>Signed in as {session.user.email}</p>
-        <button className="rounded border px-3 py-2" onClick={() => authClient.signOut()}>
-          Sign out
-        </button>
-      </main>
-    );
-  }
+  if (isPending || session) return <main className="p-6">Loading…</main>;
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-4 p-6">
