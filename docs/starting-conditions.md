@@ -16,8 +16,8 @@ starting conditions comparable and honest. See [`build-spec.md`](build-spec.md) 
 | Auth starter | Better Auth 1.7.11 — email + password, Prisma adapter, `nextCookies()`; schema from `npx auth@1.7.11 generate`; one migration `better_auth_init` |
 | Prisma version | 7.10.1 + `@prisma/adapter-pg` 7.10.1, `pg` 8.23.1 |
 | Node version | 24.3.0 (npm 11.4.2) |
-| Starter commit SHA (timer start) | |
-| Bare starter preview URL | |
+| Starter commit SHA (timer start) | `408a261d44eb8963c2071aea570f52feb947fa00` (branch `pre-timer-starter`) |
+| Bare starter deployment | https://kd-challenge-6k3hqh6wx-alejandrogomezes-projects.vercel.app (built from `408a261`; went to Production as the project's first deploy). Its `/api/auth/*` returned 500 until `BETTER_AUTH_SECRET` was added in Vercel — the pre-timer setup was still finishing that when the timer started. |
 
 ## What existed before the timer
 
@@ -46,5 +46,5 @@ starting conditions comparable and honest. See [`build-spec.md`](build-spec.md) 
 
 ## Timer
 
-- Started: `<date time TZ>`
+- Started: 2026-10-19 22:58 CST (recorded by the assistant from `date` when the start was announced)
 - Ended: `<date time TZ>`
