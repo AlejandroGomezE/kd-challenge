@@ -1,11 +1,10 @@
-# Shared by scripts/down-be and scripts/down-fe. Sourced, not executed.
+# Used by scripts/down. Sourced, not executed.
 #
 # stop_dev <label> <dir> <port>
 #   Stops the dev tooling running out of <dir>: every node process whose command line points into
-#   <dir>/node_modules/ (the nest/vite/npm CLI wrappers, e.g. `nest start --watch`, `vite`) —
-#   killing each one's whole process tree, so the dev server it spawned (`node dist/main`, Vite's
-#   esbuild) goes with it. Any other node process running out of <dir> (e.g. a `node dist/main`
-#   someone started by hand) is reported, never killed. Then reports whether <port> is free;
+#   <dir>/node_modules/ (the next/npm CLI wrappers, e.g. `next dev`, `next start`) — killing each
+#   one's whole process tree, so the server workers it spawned go with it. Any other node process
+#   running out of <dir> is reported, never killed. Then reports whether <port> is free;
 #   whatever still holds it is reported, never killed.
 
 is_windows() {

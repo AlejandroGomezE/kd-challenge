@@ -1,6 +1,6 @@
 ---
 name: review-pr
-description: Review a PR on this repo (backend/ NestJS+Prisma, frontend/ Vite+React) against review-contract.md. Read-only by default — no build/test/rebase/push unless explicitly asked. Used standalone or by /close-feature. Triggers on "review the PR", "/review-pr <number>".
+description: Review a PR on this repo (TenantDesk — one Next.js app) against review-contract.md, tenancy/authorization rules included. Read-only by default — no build/test/rebase/push unless explicitly asked. Used standalone or by /close-feature. Triggers on "review the PR", "/review-pr <number>".
 argument-hint: <PR number> [--execute]
 ---
 
@@ -31,8 +31,9 @@ to check against existing precedent.
 
 ## Step 2. Split the diff
 
-Say which halves are touched — `backend/` only, `frontend/` only, or both — and apply
-`review-contract.md` §B / §C accordingly.
+Say which areas are touched — server (`src/server/`, `src/app/api/`, `prisma/`), client, or both —
+and apply `review-contract.md` §B / §D accordingly. **Any server change also gets §C (tenancy &
+authorization) in full**, and a migration gets read as SQL, not just as a Prisma diff.
 
 ## Step 3. Findings
 
@@ -45,8 +46,9 @@ verdict for the whole PR.
 
 ## Step 4. Execution — only if asked
 
-If (and only if) explicitly asked to run something: `npm run build`/`test` in `backend/`,
-`npm run build`/`test`/`lint` in `frontend/`. Report "N suites / M tests", not a bare number.
+If (and only if) explicitly asked to run something: `npm run typecheck`, `npm run lint`,
+`npm test`, `npm run test:integration` (local `tenantdesk_test` only), `npm run build` — from the
+repo root. Report "N files / M tests", not a bare number.
 
 ## Step 5. Act
 

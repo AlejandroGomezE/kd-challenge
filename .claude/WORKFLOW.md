@@ -1,12 +1,13 @@
-# WORKFLOW.md — starter workflow
+# WORKFLOW.md — TenantDesk workflow
 
-> **Single source of the workflow.** A feature is owned end-to-end — one branch, one PR, touching
-> `backend/` and/or `frontend/` — and Alejandro iterates on it until it's right; he directs, agents
-> execute. This is deliberately **one lane**, modeled on what used to be called the "fast lane" in an
-> earlier, much heavier version of this flow: light in ceremony, not in safety.
+> **Single source of the workflow.** A feature is owned end-to-end — one branch, one PR, in the
+> single Next.js app at the repo root — and Alejandro iterates on it until it's right; he directs,
+> agents execute. This is deliberately **one lane**: light in ceremony, not in safety.
 >
 > It lives at the **repo root** (`.claude/`), so a Claude Code session started from the repo root
-> discovers it automatically and sees both `backend/` and `frontend/`.
+> discovers it automatically.
+>
+> **What** gets built is `docs/build-spec.md`. This file is only **how**.
 
 ---
 
@@ -19,31 +20,36 @@ Frame  →  Build  →  Verify  →  Close
 
 | Phase | Skill | What happens |
 |---|---|---|
-| **Frame** | `/feature <name>` | Confirm the slug and a one-paragraph scope, quickly check it doesn't already exist, write `features/<slug>/feature.md` with a short plan (touched surface + acceptance criteria). |
+| **Frame** | `/feature <name>` | Confirm the slug and a one-paragraph scope (a slice of `docs/build-spec.md`), quickly check it doesn't already exist, write `features/<slug>/feature.md` with a short plan (touched surface + acceptance criteria pulled from the spec). |
 | **Build** | `/implement <slug>` | Break the plan into a small task list; `implementer` ⇄ `reviewer` loop per task until each is done. You direct by iteration — you don't need to read every diff. |
-| **Verify** | `/review-feature <slug>` | Run the app for real (`scripts/be-local` / `scripts/fe-local`) and check the acceptance criteria against the running app, then stop it (`scripts/down-be` / `scripts/down-fe`). Loop back to Build if something's wrong. |
-| **Close** | `/close-feature <slug>` | Write/run the tests the change actually needs (backend specs and frontend `*.test.tsx`, each in a `__tests__/` folder next to the code), open the PR, run a `review-pr` pass, merge with your explicit go-ahead, and stop any dev servers left running (`scripts/down-be` + `scripts/down-fe`). |
+| **Verify** | `/review-feature <slug>` | Run the app for real (`scripts/dev`, local Postgres) and check the acceptance criteria against it — including the cross-tenant and viewer-write attacks — then stop it (`scripts/down`). Loop back to Build if something's wrong. |
+| **Close** | `/close-feature <slug>` | Write/run the tests the change needs (unit + the integration authorization matrix against real Postgres), open the PR, run a `review-pr` pass, merge with your explicit go-ahead, and stop any dev server left running (`scripts/down`). |
 
 The loop that matters is **Verify → Build**: you don't advance linearly, you go back and iterate until
 it's actually right.
 
+### Slicing the assessment
+
+`docs/build-spec.md` §10 is the priority order. Under time pressure, prefer **one feature
+(`tenantdesk`) whose `## Tasks` follow that order** over many small features — the per-phase
+bookkeeping commits are the overhead to minimize. Split only if a slice is large enough to want its
+own PR. Respect the cut line: anything below it starts only once everything above is green.
+
 There is no separate "standard" track with more phases and formal gates. If a change turns out to be
-large enough to want that (many files, a new data model, something you want to plan out loud before
-touching code first), just say more up front at Frame time — the same four phases still apply, Frame
-just does more thinking before Build starts.
+large enough to want that, say more up front at Frame time — the same four phases still apply.
 
 ---
 
 ## Roles
 
-One person, Alejandro, doing everything: framing the feature, directing the build, verifying it
-works, deciding whether to merge. No hat-switching ceremony — you just decide.
+One person, Alejandro, doing everything: framing, directing the build, verifying, deciding whether
+to merge. Every check Alejandro performs personally goes in `docs/ai-log.md` §4.
 
 ---
 
 ## Per-feature state — `features/<slug>/`
 
-One file per feature, at the repo root (tracked and versioned, same repo as `backend/`/`frontend/`):
+One file per feature, at the repo root (tracked and versioned):
 
 ```
 features/<slug>/feature.md
@@ -51,21 +57,28 @@ features/<slug>/feature.md
 
 Sections: a short **Plan** (touched surface, acceptance criteria), a **Tasks** checklist, **Decisions**
 (anything non-obvious you chose and why), and a **Log** (a few dated bullet lines — framed, built,
-verified, closed; not a formal event schema, just enough to resume cold). No separate hub/plan/tasks/
-review/journal/audit files — one doc is enough at this size.
+verified, closed; just enough to resume cold).
 
 **Commit scope.** `features/<slug>/` is feature state, committed on its own. The **flow definition**
-(`.claude/`, `scripts/`) is edited directly when it needs to change — there's no separate governance
-skill for it at this scale; just edit the file and say why.
+(`.claude/`, `scripts/`) is edited directly when it needs to change — just edit the file and say why.
+
+---
+
+## AI log
+
+The assessment requires a real prompt log. `docs/ai-log.md` is updated **as the session happens**
+(`CONVENTIONS.md` §11) — not reconstructed at the end, never fabricated.
 
 ---
 
 ## When something's uncertain
 
 Any skill or agent that hits a genuinely low-confidence decision — no precedent in the codebase, an
-ambiguous requirement, a product question nobody's answered — **stops and asks**, rather than
-guessing. Note it under `## Decisions` in the feature file so the answer is written down once, not
-re-asked next session.
+ambiguous requirement, a spec gap — **stops and asks**, rather than guessing. Note it under
+`## Decisions` in the feature file so the answer is written down once.
+
+Security-relevant ambiguity (who may read/write what, what status code a denial returns) is
+**always** escalated — `knowledge/decisions/tenancy-authorization.md` is the reference.
 
 ---
 
@@ -73,8 +86,8 @@ re-asked next session.
 
 One person, so `gh pr review --approve` always fails (GitHub rejects self-approval) — don't try it.
 Your explicit "merge it" *is* the approval. **Merge commit, never squash** (`gh pr merge <n> --merge`)
-— every commit on the feature branch (frame, build, verified, fixes) stays visible in `main`'s
-history on GitHub. Delete the branch after.
+— every commit on the feature branch stays visible in `main`'s history. Delete the branch after.
 
-There's no auto-deploy configured for this project yet — merging to `main` doesn't ship anything by
-itself. If/when that changes, update this line.
+**Deploys.** Vercel's Git integration builds a **preview** for every pushed branch (build runs
+`prisma migrate deploy` against the Neon preview DB). The submitted preview is the one built from
+the submitted commit SHA — record both (`docs/build-spec.md` §9).

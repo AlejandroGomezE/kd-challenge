@@ -1,9 +1,9 @@
 ---
 title: Prefer shadcn/ui components; new components need human quality check
 type: decisions
-summary: frontend/ defaults to existing shadcn/ui components over hand-built equivalents. Building a new component is allowed when nothing in shadcn fits, but it must pass Alejandro's human quality check before being accepted.
+summary: The Next.js app (src/components/ui) defaults to existing shadcn/ui components over hand-built equivalents. Building a new component is allowed when nothing in shadcn fits, but it must pass Alejandro's human quality check before being accepted.
 status: active
-last-verified: 2026-09-24
+last-verified: 2026-10-19
 tags: [frontend, shadcn, ui, design-system, convention, code-review]
 ---
 
@@ -12,8 +12,8 @@ tags: [frontend, shadcn, ui, design-system, convention, code-review]
 ## Decision
 
 Default to an existing `shadcn/ui` component wherever one fits, instead of hand-building
-an equivalent, for all `frontend/` UI work — see [[UI component inventory]] for what's
-already installed (all 61 stock components as of `shadcn add --all`).
+an equivalent, for all UI work in the app — see [[UI component inventory]] for what's
+installed. Primitives are added on demand (`npx shadcn@latest add <name>`), not all at once.
 
 This is **not** a ban on new components. A genuinely new component is fine when nothing
 suitable exists in shadcn — but it must pass a **human quality check** (Alejandro's

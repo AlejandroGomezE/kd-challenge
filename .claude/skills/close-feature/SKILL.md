@@ -23,18 +23,22 @@ tell Alejandro to finish `/review-feature <slug>` first.
 
 Not a full coverage sweep — just what this change actually touched:
 
-- **`backend/`** — a unit spec for the changed service/logic, at
-  `backend/src/<module>/__tests__/*.spec.ts` (a `__tests__/` folder next to the code it covers),
-  dependencies mocked (no real database in a unit spec). E2e cases go in `backend/test/`.
-- **`frontend/`** — a `*.test.tsx`/`*.test.ts` in a `__tests__/` folder next to each changed page,
-  component or hook (`src/pages/__tests__/Home.test.tsx` is the reference). Render with `renderWithProviders` from
-  `src/test/render.tsx`, query by role/text, drive interactions with its `user`. Fake the backend
-  with MSW (`server.use(http.get(apiUrl('/path'), …))` from `src/test/server.ts`) — never mock
-  `apiClient`/`fetch`, never hit a real backend. Cover the states the change has
-  (loading/error/empty/success). shadcn primitives in `src/components/ui/*` aren't tested. Then
-  `npm test` + `npm run build` + `npm run lint`.
+- **Server** — a unit test for the changed service/logic in a `__tests__/` folder next to it,
+  repository mocked (no real DB in a unit test). The **integration authorization matrix**
+  (`tests/integration/`, `docs/build-spec.md` §7.1) must cover every endpoint the change touches:
+  401 / cross-tenant 404 / viewer 403 / invalid 400 / success with exact audit assertions, plus
+  the atomicity case for writes. Real handlers, real Better Auth sign-in, real `tenantdesk_test` —
+  never mocked.
+- **Client** — a `*.test.tsx` in a `__tests__/` folder next to each changed page/component/hook,
+  React Testing Library + MSW (never mock `api-client`/`fetch`). Cover the states the change has
+  (pending / empty / validation / failure / success; viewer sees no write controls).
+- **E2E** (if the slice is above the cut line or time allows) — Playwright in `e2e/`.
 
-Run them until green — "N suites / M tests", not a bare number.
+Then from the repo root: `npm run typecheck`, `npm run lint`, `npm test`,
+`npm run test:integration`, `npm run build` (and `npm run test:e2e` if e2e exists).
+
+Run them until green — "N files / M tests", not a bare number. Keep the **exact commands and their
+output summary**: they go into the PR body and the README's test section (`docs/build-spec.md` §9).
 
 ## Step 3. Commit and open the PR
 
@@ -75,16 +79,19 @@ Don't try `gh pr review --approve` first — solo repo, GitHub always rejects se
 If it errors, check `gh pr view <n> --json state` before assuming it failed — a local sync failure
 after a real GitHub-side merge shows as `MERGED` there.
 
-No auto-deploy is configured for this project (`ROADMAP.md`) — say so, don't describe one.
+Vercel builds a preview from every pushed branch (`WORKFLOW.md` → Merging). After merging, check the
+preview for the merged commit built (`vercel ls` or the dashboard) and note its URL + commit SHA in
+`feature.md`. A failed build is recorded with its log excerpt — never hidden.
 
 ## Step 6. Close the record
 
 1. Tick any `## Follow-ups` items this closed, or leave them as open items — never silently drop one.
 2. Set `status: done`, `next: —` in `feature.md`.
 3. Add `## Log`: `- <date> · closed — PR #<n>, merged`.
-4. Commit `features/<slug>/` only as `chore(<slug>): closed` (`CONVENTIONS.md` §9), push.
-5. Run `scripts/down-be` and `scripts/down-fe` — always, even if you don't think anything is
-   running — and confirm both ports are free (`CONVENTIONS.md` §10). Report anything they couldn't
+4. Commit `features/<slug>/` (+ `docs/ai-log.md`) only as `chore(<slug>): closed` (`CONVENTIONS.md` §9), push.
+5. Update `docs/ai-log.md` with anything real from this phase (`CONVENTIONS.md` §11).
+6. Run `scripts/down` (and `scripts/down <port>` for any Playwright port) — always, even if you
+   don't think anything is running — and confirm the ports are free (`CONVENTIONS.md` §10). Report anything they couldn't
    stop.
 
 Tell Alejandro it's done. Stop.
@@ -94,7 +101,7 @@ Tell Alejandro it's done. Stop.
 ## Rules
 
 - **Test the touched surface, not everything.**
-- **Leave nothing running.** A closed feature ends with `scripts/down-be` + `scripts/down-fe`.
+- **Leave nothing running.** A closed feature ends with `scripts/down`.
 - **One PR, Alejandro decides the merge.** Always a merge commit (`--merge`) — never `--squash` or
   `--rebase`; the feature's full commit history stays in `main`.
 - **Never `gh pr review --approve`** on this solo repo.

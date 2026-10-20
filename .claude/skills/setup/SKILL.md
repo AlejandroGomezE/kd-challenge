@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Verify the machine can run this repo (backend/ NestJS+Prisma, frontend/ Vite+React) and offer to fix gaps. Runs scripts/check-env, reports OK/MISSING, and with confirmation spawns the installer agent per gap. Triggers on "setup", "check my environment", or "/setup".
+description: Verify the machine can run TenantDesk (Next.js app, Docker Postgres, Vercel + Neon, gh) and offer to fix gaps. Runs scripts/check-env, reports OK/MISSING, and with confirmation spawns the installer agent per gap. Triggers on "setup", "check my environment", or "/setup".
 argument-hint: none, or --fix
 ---
 
@@ -16,18 +16,21 @@ time, with confirmation.
 bash scripts/check-env
 ```
 
-This already covers: Node (^22.12, 24 or 26+), npm, `backend/node_modules` + `frontend/node_modules` installed,
-`backend/.env` present (and whether Observe APM credentials are set — optional, not blocking).
+This already covers: Node (^22.12, 24 or 26+), npm, docker compose, `psql` (optional), `vercel`
+CLI, `gh`, whether the app is scaffolded (root `package.json`, deps, `prisma/schema.prisma`),
+`.env` with `DATABASE_URL` / `BETTER_AUTH_SECRET` / `BETTER_AUTH_URL` / `SEED_USER_PASSWORD`, and
+whether the compose Postgres is running. It never prints `.env` values.
 
 Add, read-only, what the script doesn't:
 - `git config user.name` / `user.email` set.
-- `gh --version` and `gh auth status` (the script only checks the binary is on PATH).
-- `(cd backend && npm run build)` actually succeeds.
-- `(cd frontend && npm run build)` actually succeeds.
+- `gh auth status` and `vercel whoami` (the script only checks the binaries).
+- If the app is scaffolded: `npm run build` succeeds, and `npx prisma migrate status` against the
+  **local** DB.
+- `vercel env ls` shows `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `BETTER_AUTH_SECRET`,
+  `BETTER_AUTH_URL` for Preview (names only — never pull or print values here).
 
-**No database check blocks anything** — the database is a local SQLite file
-(`backend/prisma/dev.db`, created by `npx prisma db push`) and the backend boots even before it
-exists. If `DATABASE_URL` isn't set, that's worth noting, not a hard failure.
+**Before the timer** (`docs/build-spec.md` §2) "not scaffolded" is expected and is reported as a
+pre-timer TODO, not a failure.
 
 ## Step 2. Present the checklist
 

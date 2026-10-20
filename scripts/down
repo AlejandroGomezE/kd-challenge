@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Stop the dev server started by scripts/dev (or `npm run dev` / `next dev` / `next start` from the
+# repo's node_modules). Kills the whole process tree, then checks :3000 is free.
+# Pass a port to check a different one (e.g. scripts/down 3100 for the Playwright server).
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/stop-dev.sh
+. "$REPO_ROOT/scripts/lib/stop-dev.sh"
+
+stop_dev tenantdesk "$REPO_ROOT" "${1:-3000}"

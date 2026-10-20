@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
-# Environment check for this repo (backend/ + frontend/). Read-only.
+# Environment check for TenantDesk (one Next.js app at the repo root). Read-only.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BACKEND_DIR="$REPO_ROOT/backend"
-FRONTEND_DIR="$REPO_ROOT/frontend"
 
 info() { printf '\033[1m%s\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m\xe2\x9c\x93\033[0m %s\n' "$1"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 err()  { printf '  \033[31m\xe2\x9c\x97\033[0m %s\n' "$1"; }
 
-info "starter-app environment check"
+info "TenantDesk environment check"
 echo
 
 # --- Toolchain ---
@@ -20,8 +18,7 @@ if command -v node >/dev/null; then
   node_version="$(node --version)"
   major="${node_version#v}"; major="${major%%.*}"
   rest="${node_version#v*.}"; minor="${rest%%.*}"
-  # Matches "engines" in backend/ and frontend/package.json: ^22.12.0 || ^24.0.0 || >=26.0.0
-  # (frontend Vitest's range; better-sqlite3 also needs >=22). Odd majors (23, 25) are excluded.
+  # Even LTS majors only: ^22.12.0 || ^24.0.0 || >=26.0.0 (Next.js, Prisma, Vitest). Odd majors excluded.
   if { [ "${major:-0}" -eq 22 ] && [ "${minor:-0}" -ge 12 ]; } 2>/dev/null \
     || [ "${major:-0}" -eq 24 ] || [ "${major:-0}" -ge 26 ]; then
     ok "node $node_version"
@@ -34,42 +31,47 @@ fi
 
 command -v npm >/dev/null && ok "npm $(npm --version)" || err "npm missing"
 
-# Optional: only needed for `docker compose up --build` (Runbook → Run with Docker).
+# Local Postgres for dev + tests runs in Docker (compose.yaml).
 if command -v docker >/dev/null && docker compose version >/dev/null 2>&1; then
-  ok "docker compose available (optional — Runbook → Run with Docker)"
+  ok "docker compose available (local Postgres)"
 else
-  warn "docker compose not found (optional — only needed for Runbook → Run with Docker)"
+  err "docker compose not found — needed for local Postgres (or point DATABASE_URL at another Postgres)"
+fi
+command -v psql >/dev/null && ok "psql $(psql --version | awk '{print $3}')" || warn "psql not found (optional — handy for inspecting audit rows)"
+command -v vercel >/dev/null && ok "vercel CLI $(vercel --version 2>/dev/null | tail -1)" || warn "vercel CLI not found → npm i -g vercel (needed for env pull / deploy)"
+command -v gh >/dev/null && ok "gh $(gh --version | head -1 | awk '{print $3}')" || warn "gh not found (needed to open PRs)"
+echo
+
+# --- App ---
+info "App (repo root)"
+if [ -f "$REPO_ROOT/package.json" ]; then
+  ok "package.json present"
+  [ -d "$REPO_ROOT/node_modules" ] && ok "deps installed" || warn "deps not installed → npm install"
+  [ -f "$REPO_ROOT/prisma/schema.prisma" ] && ok "prisma/schema.prisma present" || warn "prisma/schema.prisma missing"
+else
+  warn "no package.json — Next.js app not scaffolded yet (docs/build-spec.md §2)"
 fi
 echo
 
-# --- Dependencies installed ---
-info "Dependencies"
-if [ -d "$BACKEND_DIR/node_modules" ]; then
-  ok "backend deps installed"
+# --- Env ---
+info "Env (.env)"
+if [ -f "$REPO_ROOT/.env" ]; then
+  ok ".env present"
+  for var in DATABASE_URL BETTER_AUTH_SECRET BETTER_AUTH_URL; do
+    if grep -qE "^${var}=.+" "$REPO_ROOT/.env"; then ok "$var set"; else err "$var missing or empty"; fi
+  done
+  grep -qE '^SEED_USER_PASSWORD=.+' "$REPO_ROOT/.env" && ok "SEED_USER_PASSWORD set" \
+    || warn "SEED_USER_PASSWORD not set — needed for npm run db:seed and the integration tests"
 else
-  warn "backend deps not installed → (cd backend && npm install)"
-fi
-if [ -d "$FRONTEND_DIR/node_modules" ]; then
-  ok "frontend deps installed"
-else
-  warn "frontend deps not installed → (cd frontend && npm install)"
+  warn ".env missing → cp .env.example .env"
 fi
 echo
 
-# --- Backend env ---
-info "Backend env (backend/.env)"
-if [ -f "$BACKEND_DIR/.env" ]; then
-  ok "backend/.env present"
-  if grep -qE '^OBSERVE_APP_KEY=.+' "$BACKEND_DIR/.env" 2>/dev/null \
-    && grep -qE '^OBSERVE_APP_SECRET=.+' "$BACKEND_DIR/.env" 2>/dev/null; then
-    ok "OBSERVE_APP_KEY / OBSERVE_APP_SECRET set — Observe APM will initialize"
-  else
-    warn "OBSERVE_APP_KEY / OBSERVE_APP_SECRET blank — Observe APM stays disabled (optional, app runs fine without it)"
-  fi
-  port_line="$(grep -E '^PORT=' "$BACKEND_DIR/.env" 2>/dev/null | tail -1 || true)"
-  [ -n "$port_line" ] && ok "$port_line" || warn "no PORT= in backend/.env — src/main.ts falls back to 3000"
+# --- Postgres reachable ---
+info "Postgres"
+if command -v docker >/dev/null && docker compose -f "$REPO_ROOT/compose.yaml" ps --status running 2>/dev/null | grep -q postgres; then
+  ok "compose postgres service running"
 else
-  warn "backend/.env missing — app still boots fine (PORT defaults to 3000, Observe stays disabled)."
-  warn "  Copy backend/.env.example to backend/.env to set Observe credentials."
+  warn "compose postgres not running → docker compose up -d"
 fi
 echo

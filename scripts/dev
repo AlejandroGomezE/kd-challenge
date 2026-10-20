@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Run the TenantDesk Next.js app locally (foreground, with logs): npm run dev on :3000.
+# Needs local Postgres up (docker compose up -d) and .env with DATABASE_URL / BETTER_AUTH_*.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+[ -f "$REPO_ROOT/package.json" ] || { echo "No package.json at the repo root — the Next.js app isn't scaffolded yet (docs/build-spec.md §2)." >&2; exit 1; }
+[ -d "$REPO_ROOT/node_modules" ] || echo "! node_modules missing — run: npm install" >&2
+[ -f "$REPO_ROOT/.env" ] || echo "! .env missing — copy .env.example to .env" >&2
+
+echo "Starting TenantDesk — npm run dev (Next.js, port :3000)"
+echo
+cd "$REPO_ROOT"
+exec npm run dev

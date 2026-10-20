@@ -1,7 +1,7 @@
 ---
 title: Code quality
 type: infra
-summary: Alejandro's cross-project code-quality and architecture preferences — pragmatic layered design, explicit list of patterns to avoid, and what "tests" means per layer.
+summary: Alejandro's cross-project code-quality and architecture preferences — pragmatic layered design, explicit list of patterns to avoid, and what "tests" means per layer — applied to the single Next.js app (route handler → service → repository → Prisma).
 status: active
 last-verified: 2026-10-19
 tags: [code-quality, architecture, conventions, tests]
@@ -25,7 +25,7 @@ Avoid:
 
 * `any`
 * Extremely large files
-* Controllers with business logic
+* Controllers (route handlers) with business logic
 * Services that access Prisma directly
 * Repositories with business rules
 * React components with complex API logic
@@ -50,7 +50,7 @@ I do not want:
 I want a traditional, clear, and pragmatic architecture:
 
 ```text
-Controller
+Controller   (in Next.js: the route handler)
 Service
 Repository
 ORM
@@ -58,135 +58,53 @@ ORM
 
 # Tests
 
-Backend:
+Server:
 
 * Unit test for a service
 * Mocked repository
-* Controller test
-* Authentication guard test
-* Repository test when useful
+* Route handler test — the integration tier: real handler, real session, real Postgres
+* Authorization test for every endpoint (401 / cross-tenant 404 / role 403 / invalid 400 / success)
+* Repository test when useful (integration tier)
 
-Frontend:
+Client:
 
 * Component test
-* Protected route test
-* Form test
+* Protected route / page test
+* Form test (validation, pending, failure)
 * API hook test
 
-# Conventions for future modules
+# Conventions for this app
 
-Shapes to reuse when new modules get built, so they aren't reinvented per-module or
-re-litigated from scratch each session. Only auth (and a users module with no controller) exists
-so far — see [[Backend architecture]] / [[Frontend architecture]] for current state.
+How the preferences above map onto TenantDesk — see [[App architecture]] for the full layout and
+[[Tenancy and authorization]] for the security rules.
 
-## Backend — `common/` taxonomy
-
-`common/filters/` (`all-exceptions.filter.ts`) and `common/interceptors/`
-(`response-serializer.interceptor.ts`) exist today. When something cross-cutting is actually
-needed, this is where it goes — don't invent a different home for it:
-
-* `decorators/` — custom param/method decorators (`@CurrentUser()` and `@Public()` live in `auth/`, next to the guard)
-* `events/` — domain event names + payload types, if modules ever need to react to each other's
-  writes without importing each other (would need `@nestjs/event-emitter`, not installed)
-* `exceptions/` — custom domain exceptions (thrown by services, caught by the global
-  filter)
-* `filters/` — exception filters
-* `guards/` — auth/permission guards
-* `interceptors/` — response shaping, logging, etc.
-* `pipes/` — custom validation/transformation pipes
-
-## Backend — auth module shape
-
-> **Implemented** (email + password, own server-side sessions in an httpOnly cookie — no
-> third-party provider) in `backend/src/auth/`; see [[Backend architecture]].
+## Server (`src/server/`)
 
 ```text
-auth/
-├── auth.module.ts
-├── auth.service.ts
-├── auth.guard.ts
-├── authenticated-user.interface.ts
-└── current-user.decorator.ts
+src/server/<area>/
+├── <area>.repository.ts   # only file importing `db`; tenant-owned queries require tenantId
+├── <area>.service.ts      # authorization + business rules + transactions
+├── <area>.dto.ts          # toXDto(row) mappers — what may leave the API
+└── __tests__/
 ```
 
-Prefer a single global guard (`APP_GUARD`) protecting every route by default, with an
-explicit `@Public()` decorator to opt individual routes out — don't gate routes
-one-by-one with per-controller guards.
+* Route handlers are thin: `requireSession`, parse with the shared Zod schema, call one service
+  function, return `json(dto)`; errors go through `http.ts`.
+* Plain exported functions; no classes for DI, no repository interfaces.
+* `import 'server-only'` at the top of everything under `src/server/`.
+* One `PrismaClient` (`src/server/db.ts`); never construct another (the seed script is the only
+  exception — it runs outside Next).
 
-## Backend — generic domain module shape
+## Client (`src/app/`, `src/components/`, `src/lib/`)
 
-```text
-modules/<name>/
-├── dto/
-├── entities/
-├── <name>.controller.ts
-├── <name>.service.ts
-├── <name>.repository.ts
-└── <name>.module.ts
-```
+* Server state via TanStack Query; HTTP only through `src/lib/api-client.ts`.
+* Forms: React Hook Form + Zod (`src/lib/schemas/`, shared with the server).
+* shadcn primitives first — [[Shadcn component preference]].
+* Server components may call services directly; client components call the API.
 
-This is the same Controller → Service → Repository → ORM shape from above, just
-spelled out per-file for the first real module to copy. `modules/users/` is a partial example
-(repository + service + `dto/`, no controller yet). Skip `entities/` unless there's something to
-put in it — Prisma's generated types already describe the rows.
+## Tooling
 
-`dto/` holds both request DTOs (`class-validator`) and response DTOs (`@Expose()`
-whitelist, declared per handler with `@SerializeOptions({ type })`) — every endpoint
-that returns a body has a response DTO; a body without one is a 500 (fails closed; see
-[[Backend architecture]] → Responses).
-
-## Frontend — auth context shape
-
-> **Implemented** (email + password, cookie sessions) in `frontend/src/lib/auth/` — without
-> `getAccessToken()`, since the httpOnly cookie leaves no token for JS; see
-> [[Frontend architecture]].
-
-```typescript
-interface AuthContextValue {
-  user: AuthUser | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  getAccessToken(): Promise<string | null>;
-  signIn(): Promise<void>;
-  signOut(): Promise<void>;
-}
-```
-
-Expose it through a `useAuth()` hook — components and `ProtectedRoute` consume the
-hook, never the context directly. (As built, the session is an httpOnly cookie, so there's
-no `getAccessToken()` — `apiClient` just sends `credentials: 'include'`.)
-
-## Frontend — routes checklist
-
-For when there's more than one page:
-
-* Public routes
-* Protected routes (via `ProtectedRoute`, gated on `useAuth()`)
-* Login
-* Main authenticated view (today the Home placeholder)
-* 404 page (today unknown paths redirect to `/`)
-* Error boundary
-
-# Current tooling
-
-How the "Configure" list above maps onto the actual two apps — see
-[[Backend architecture]] and [[Frontend architecture]] for the full picture:
-
-* **TypeScript strict mode** — both apps. `backend/tsconfig.json`: `strict: true`.
-  `frontend/tsconfig.app.json` (src) + `tsconfig.node.json` (vite.config.ts): `strict`,
-  `noUnusedLocals`/`noUnusedParameters`, `verbatimModuleSyntax`; `npm run typecheck`
-  (`tsc -b`), also run first by `npm run build`. API response shapes live in
-  `frontend/src/lib/api/types.ts` (mirroring the backend's response DTOs).
-* **Lint** — `backend/` uses `oxlint` (`npm run lint`), not ESLint; `frontend/` uses
-  ESLint + `typescript-eslint` recommended (`npm run lint`). `backend/oxlint.json` currently sets
-  `@typescript-eslint/no-explicit-any` to `"off"`, which sits at odds with "Avoid:
-  `any`" above — noted, not silently changed; see [[Backend architecture]]'s open
-  questions.
-* **Import aliases** — `@/*` → `frontend/src/*` (both `frontend/vite.config.ts` and
-  `frontend/tsconfig.app.json`). No alias configured on the backend yet (relative imports
-  only).
-* **Tests** — backend: Vitest (`npm test`, `test:cov`, `test:e2e`). Frontend: Vitest
-  + jsdom + React Testing Library + MSW (`npm test`, `test:watch`, `test:cov`) —
-  tests in a `__tests__/` folder next to the code, API faked with MSW handlers, never by
-  mocking `apiClient`. Backend unit specs follow the same `__tests__/` rule; e2e lives in
-  `backend/test/`.
+* **TypeScript strict** (`strict`, `noUncheckedIndexedAccess`); `npm run typecheck`.
+* **Lint** — ESLint (Next config + `typescript-eslint`), `npm run lint`. Prettier for formatting.
+* **Import alias** — `@/*` → `src/*`.
+* **Tests** — Vitest (unit + integration), Playwright (e2e). See [[App architecture]] → Tests.

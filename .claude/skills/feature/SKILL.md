@@ -1,6 +1,6 @@
 ---
 name: feature
-description: Use when starting a feature or a change on this repo (backend/ NestJS+Prisma, frontend/ Vite+React). The entry point — frames the feature (slug, scope, plan), quickly checks it doesn't already exist, writes features/<slug>/feature.md, and hands off to /implement. Triggers on "start a feature", "new feature", "let's build X", or "/feature".
+description: Use when starting a feature or a change on this repo (TenantDesk — one Next.js app; slices come from docs/build-spec.md). The entry point — frames the feature (slug, scope, plan), quickly checks it doesn't already exist, writes features/<slug>/feature.md, and hands off to /implement. Triggers on "start a feature", "new feature", "let's build X", or "/feature".
 argument-hint: <feature name, e.g. "password reset" or "account settings">
 ---
 
@@ -10,7 +10,8 @@ You are the entry point into this repo's feature flow (`WORKFLOW.md`). Your job 
 the slug and scope, sanity-check it against the existing code, write `features/<slug>/feature.md`,
 and hand off to `/implement`. You don't write code here.
 
-Read `WORKFLOW.md` and `CONVENTIONS.md` (siblings of this skill's parent) first. Write the feature
+Read `WORKFLOW.md` and `CONVENTIONS.md` (siblings of this skill's parent) and `docs/build-spec.md`
+first — the spec is where scope and acceptance criteria come from. Write the feature
 file in English; talk to Alejandro in whatever language he uses.
 
 ---
@@ -27,8 +28,9 @@ pick a different slug.
 Before writing the plan, spend a few `Grep`/`Glob` calls checking the two things that actually bite:
 - **Does something like this already exist?** (a similar component, endpoint, or hook worth reusing
   or extending instead of duplicating)
-- **Roughly how big is this?** (one file, a handful, or does it touch both `backend/` and
-  `frontend/`?)
+- **Roughly how big is this?** (one file, a handful, or does it touch both server and client?)
+- **Which spec sections does it cover?** (`docs/build-spec.md` §-numbers) — pull acceptance criteria
+  from there rather than inventing them, and note anything the spec leaves open.
 
 This isn't a formal multi-question protocol — just enough to not build against a wrong assumption. If
 something genuinely doesn't add up (the premise seems false), say so and stop before writing the
@@ -64,21 +66,23 @@ resolve (dirty working tree, detached HEAD), stop and ask rather than writing on
 ---
 slug: <slug>
 status: framed
-scope: backend | frontend | full-stack
+scope: server | client | full-stack
 next: /implement <slug>
 ---
 # <Feature>
 
 ## Plan
+- Spec: docs/build-spec.md §<n>, §<m>
 - Touched surface: <files/areas, from Step 2>
 - Acceptance criteria:
   1. <criterion>
   2. <criterion>
 - Must not break: <existing behavior this could regress, if any>
+- Authorization matrix rows (any server change): <401 / cross-tenant 404 / viewer 403 / invalid 400 / success+audit>
 
 ## Tasks
-- [ ] (T1, be) <task 1>
-- [ ] (T2, fe, after: T1) <task 2>
+- [ ] (T1, server) <task 1>
+- [ ] (T2, client, after: T1) <task 2>
 
 ## Decisions
 - <ISO date or plain date> · framed · <any judgment call made here>
@@ -93,10 +97,10 @@ Keep the plan short — a handful of bullets, not a design document. Break the w
 number of concrete tasks** under `## Tasks` (each roughly one file or one tightly-related group of
 changes) — `/implement` will work through this list.
 
-Tag each task `(T<n>, be|fe[, after: T<m>, …])`: a short id, the stack, and the tasks it depends on.
+Tag each task `(T<n>, server|client[, after: T<m>, …])`: a short id, the area, and the tasks it depends on.
 Only list real dependencies (needs a file, type, endpoint or schema another task creates) — untagged
-tasks are treated as independent and may run in parallel. When a frontend task consumes a new
-endpoint, put its request/response shape in the Plan so the `fe` task needn't wait on the `be` one.
+tasks are treated as independent and may run in parallel. When a client task consumes a new
+endpoint, put its request/response shape in the Plan so the `client` task needn't wait on the `server` one.
 
 ## Step 5. Hand off
 
@@ -104,7 +108,10 @@ Tell Alejandro the plan, in his language, and the next command:
 
 > Next: `/implement <slug>`
 
-Commit `features/<slug>/feature.md` (that path only — never `.claude/` or product code) as
+If this is the first `/feature` of the timed session, record the initial prompt verbatim in
+`docs/ai-log.md` §1 (`CONVENTIONS.md` §11).
+
+Commit `features/<slug>/feature.md` (and `docs/ai-log.md` if touched — never `.claude/` or product code) as
 `chore(<slug>): frame feature` (`CONVENTIONS.md` §9), push, and stop. The human advances — no
 auto-chaining into `/implement`.
 

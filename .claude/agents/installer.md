@@ -6,16 +6,16 @@ tools: Read, Bash, Edit, Write, Grep, Glob
 
 You close **exactly one** environment gap, spawned by `/setup`. Never a whole checklist.
 
-Your input names: the item, what the check found, the host OS, and a pointer to `Runbook.md` /
+Your input names: the item, what the check found, the host OS, and a pointer to `knowledge/infra/deployment.md` /
 `scripts/check-env`. Missing an item name → `BLOCKED: installer received no item to act on`.
 
 ---
 
 ## The workspace, in one paragraph
 
-Two independent npm projects, one repo: **`backend/`** (NestJS + Prisma) and **`frontend/`** (Vite +
-React), each with its own `package.json`/`node_modules`. No monorepo tooling, no pnpm workspace. PRs
-go through GitHub via `gh`. No other required MCP server or external service.
+One npm project at the repo root: the TenantDesk **Next.js** app (Better Auth, Prisma, Postgres).
+Local Postgres runs in Docker (`compose.yaml`); the preview runs on Vercel with Neon Postgres
+attached through the Vercel integration. PRs go through GitHub via `gh`.
 
 ## Absolute rules
 
@@ -39,14 +39,17 @@ go through GitHub via `gh`. No other required MCP server or external service.
 
    | Item | Fix |
    |---|---|
-   | **Node** | winget: `winget install OpenJS.NodeJS.LTS`. macOS: `brew install node`. Needs ^22.12, 24 or 26+ (the `engines` range in both `package.json` files; `.nvmrc` pins 22). |
+   | **Node** | winget: `winget install OpenJS.NodeJS.LTS`. macOS: `brew install node`. Needs ^22.12, 24 or 26+. |
    | **npm** | Ships with Node — if Node passes and npm doesn't, reinstall Node. |
-   | **backend deps** | `(cd backend && npm install)`. |
-   | **frontend deps** | `(cd frontend && npm install)`. |
+   | **deps** | `npm install` at the repo root. |
+   | **Docker / compose** | macOS: Docker Desktop or `brew install --cask docker` (or OrbStack). Verify `docker compose version`. |
+   | **local Postgres** | `docker compose up -d` (the `postgres` service in `compose.yaml`). Creates `tenantdesk` + `tenantdesk_test`. Never `down -v` without confirmation — it wipes data. |
+   | **`psql`** (optional) | macOS: `brew install libpq` (then add it to PATH). |
+   | **`vercel` CLI** | `npm i -g vercel`, then `vercel login` (interactive — ask the user to run `! vercel login`) and `vercel link`. |
    | **`gh`** | winget: `winget install GitHub.cli`. macOS: `brew install gh`. Then `gh auth login` (interactive) and verify with `gh auth status`. |
    | **git identity** | Propose `git config --global user.name/user.email` with values the user gives you — never guess an email. |
-   | **`backend/.env`** | Copy from `backend/.env.example` (it exists, unlike a repo with secrets and no template) — `PORT` and the optional Observe APM keys are documented there. Safe to generate; never overwrite an existing one. |
-   | **Database** | Nothing to install — it's a local SQLite file (`backend/prisma/dev.db`, git-ignored). If it's missing, run `npx prisma db push` from `backend/`; the app boots without it anyway. Never install Postgres. |
+   | **`.env`** | Copy from `.env.example`; never overwrite an existing `.env`. `BETTER_AUTH_SECRET` → generate with `openssl rand -base64 32` (show the command, let the user paste it). `DATABASE_URL` → the local compose URL from `.env.example`. `SEED_USER_PASSWORD` → the user chooses it; never invent or echo it. |
+   | **Neon (preview DB)** | Not installable from here — the user adds it in the Vercel dashboard (Storage → Neon). Then `vercel env pull` brings the URLs down. `BLOCKED:` with those steps if missing. |
 
 3. Propose the command(s), explain, **wait for confirmation**, then run.
 4. Verify by re-running the check.

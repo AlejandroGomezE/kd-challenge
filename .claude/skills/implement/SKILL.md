@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Use for the Build phase of this repo's feature flow — after /feature has written features/<slug>/feature.md. Works through its Tasks checklist, spawning implementer/reviewer per task, on backend/ (NestJS+Prisma) and/or frontend/ (Vite+React) as scope requires. Triggers on "implement the feature", "build it", or /implement <slug>.
+description: Use for the Build phase of this repo's feature flow — after /feature has written features/<slug>/feature.md. Works through its Tasks checklist, spawning implementer/reviewer per task, on the TenantDesk Next.js app (server and/or client) as scope requires. Triggers on "implement the feature", "build it", or /implement <slug>.
 argument-hint: <slug>
 ---
 
@@ -20,7 +20,7 @@ language.
 1. `Read` `features/<slug>/feature.md`. If it doesn't exist, tell Alejandro to run `/feature <name>`
    first.
 2. Set `status: building` in the frontmatter.
-3. Note `scope` — which of `backend/`, `frontend/` this touches.
+3. Note `scope` — server, client, or both.
 
 ## Step 2. Confirm the branch
 
@@ -42,7 +42,7 @@ Run the list as a pipeline, keeping **up to 3 agents working at once** (implemen
 
 **Ready tasks.** A task is *ready* when it's unchecked, every task in its `after:` tag is checked off,
 and it won't touch the same files as a task currently in flight. Tasks are tagged
-`(T<n>, be|fe[, after: …])` by `/feature`; if an older `feature.md` has no tags, infer dependencies
+`(T<n>, server|client[, after: …])` by `/feature`; if an older `feature.md` has no tags, infer dependencies
 from the descriptions and write the tags in before starting. When unsure whether two tasks overlap,
 treat them as dependent.
 
@@ -53,7 +53,7 @@ whole round.
 
 Per task:
 
-1. **Implement** — spawn the `implementer` agent, passing the target stack (`backend` or `frontend`)
+1. **Implement** — spawn the `implementer` agent, passing the target area (`server` or `client`)
    and the task description plus any prior `REVIEW_NOTES`. If other tasks are in flight, also pass
    `PARALLEL_WITH:` their task ids + the files they're expected to touch. It reads existing code for
    precedent (`Grep`/`Glob`) before writing.
@@ -70,19 +70,23 @@ Only the coordinator edits `feature.md` — never ask an agent to check off its 
 
 ## Step 4. Build & checks
 
-Once no tasks are in flight, run this full pass — it's the authoritative check after parallel work.
-If scope is both stacks, run backend and frontend checks **concurrently** (two background commands),
-each chained in its own directory.
+Once no tasks are in flight, run this full pass from the repo root — it's the authoritative check
+after parallel work:
 
-- **`backend/`:** `npm run build` (stop on errors), then `npm test`. Report as "N suites / M tests".
-- **`frontend/`:** `npm run build`, then `npm test`, then `npm run lint`. Report tests as "N suites /
-  M tests". If a change breaks an existing test, fix the code or update the test deliberately — say
-  which. New tests for the touched surface are written at Close (`/close-feature` Step 2).
+1. `npm run typecheck` and `npm run lint` (stop on errors).
+2. `npm test` (unit). Report as "N files / M tests".
+3. If server behavior changed: `npm run test:integration` (local Postgres up, `tenantdesk_test`
+   only — `CONVENTIONS.md` §12). Report the same way, and say which matrix rows exist.
+4. `npm run build` once per round at least (catches server/client boundary errors typecheck misses).
+
+If a change breaks an existing test, fix the code or update the test deliberately — say which. New
+tests for the touched surface are written at Close (`/close-feature` Step 2), **except** the
+integration authorization matrix rows, which are written with the endpoint they cover.
 
 Report failures; don't silently work around them — let Alejandro steer.
 
-If you booted the app to check it (`scripts/be-local`, `npm run start:dev`, `npm run dev`, …), stop
-it with `scripts/down-be` / `scripts/down-fe` before summarizing (`CONVENTIONS.md` §10).
+If you booted the app to check it (`scripts/dev`, `npm run dev`, `npm run start`, …), stop it with
+`scripts/down` before summarizing (`CONVENTIONS.md` §10).
 
 ## Step 5. Summarize and iterate
 
@@ -95,7 +99,9 @@ satisfied.
 Once the task list is done and checks are green:
 1. Set `status: verifying` in `feature.md`, set `next: /review-feature <slug>`.
 2. Add a `## Log` line: `- <date> · built — <one line>`.
-3. Commit **only** `features/<slug>/` as `chore(<slug>): build complete` (`CONVENTIONS.md` §9) —
+3. Add any real follow-up prompts / rejected suggestions from this round to `docs/ai-log.md`
+   (`CONVENTIONS.md` §11).
+4. Commit **only** `features/<slug>/` (+ `docs/ai-log.md`) as `chore(<slug>): build complete` (`CONVENTIONS.md` §9) —
    product code stays uncommitted in the working tree; `/close-feature` makes the one product-code
    commit. Push.
 
