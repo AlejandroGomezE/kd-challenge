@@ -1,278 +1,191 @@
-# Starter App
+# TenantDesk
 
-A full-stack starter project with authentication and nothing else: a NestJS + Prisma API over
-SQLite and a Vite + React single-page app. Users can sign up, sign in, see who they are on a Home
-page, and sign out. Everything else (the feature workflow in `.claude/`, the conventions in
-`knowledge/`, the test setup on both sides, the Docker stack) is there so new features can be added
-on top. The whole stack runs with one `docker compose up --build`.
+A tiny project tracker for two organizations: one vertical slice of multi-tenant authorization.
+Signed-in members list, create and rename projects in their organization. Viewers read, editors
+and admins write, and every write is audited atomically.
 
-This README covers **what is included and why**. **How to run it** lives in
-[`Runbook.md`](Runbook.md), which is the only place setup is described.
+**Stack:** Next.js 16 (App Router, Node runtime), React 19, strict TypeScript, Better Auth 1.7
+(email + password, DB sessions), Prisma 7 + PostgreSQL, Neon (through Vercel) in the cloud, Docker
+Postgres locally, TanStack Query, Zod, Vitest, Playwright.
 
-## Start here
+## Submission
+
+| | |
+|---|---|
+| Repository | https://github.com/AlejandroGomezE/kd-challenge |
+| Commit | _see [Submitted commit](#submitted-commit) below_ |
+| Deployed app | https://kd-challenge.vercel.app |
+| Test logins | **Supplied privately** (one shared password for the three seed users below) |
+| Spec | [`docs/build-spec.md`](docs/build-spec.md) |
+| AI log | [`docs/ai-log.md`](docs/ai-log.md) |
+| Starting conditions | [`docs/starting-conditions.md`](docs/starting-conditions.md) |
+
+### Seed users
+
+| User | Email | Access |
+|---|---|---|
+| Ada | `ada@acme.test` | **Acme Corp** (tenant A): `admin`. Only A. |
+| Ben | `ben@globex.test` | **Globex Inc** (tenant B): `editor`. Only B. |
+| Vic | `vic@acme.test` | **Acme Corp**: `viewer` (read-only) |
+
+Projects: Acme has "Acme Website Revamp", Globex has "Globex Data Migration". Sign-up is
+disabled; accounts exist only through the seed.
+
+**What the reviewer will try:**
+- **Ada → Globex.** Sign in as Ada and open `/t/globex/projects`: you get "Organization not found".
+  `GET /api/tenants/globex/projects` returns 404, and so does `PATCH
+  /api/tenants/acme/projects/<globex-project-id>`.
+- **Viewer write.** Sign in as Vic: no write controls are shown, and `POST
+  /api/tenants/acme/projects` returns 403.
+- **Scripted:** `scripts/smoke-authz <url>` runs these attacks, plus more, from a shell.
+
+---
+
+## Setup (local)
+
+Prerequisites: Node 22.12+/24, Docker.
 
 ```bash
-docker compose up --build        # then open http://localhost:8080
+cp .env.example .env              # set BETTER_AUTH_SECRET (openssl rand -base64 32) and SEED_USER_PASSWORD
+docker compose up -d --wait       # Postgres 17 on localhost:5433 — databases tenantdesk + tenantdesk_test
+npm ci                            # postinstall runs prisma generate
+npx prisma migrate deploy         # schema + constraints
+npm run db:seed                   # 2 tenants, 3 users, memberships, 1 project each (idempotent)
+npm run dev                       # http://localhost:3000
 ```
 
-Sign in as **`demo@example.com` / `password1234`**. A fresh Docker volume is seeded with three demo
-accounts on first start. For running without Docker (`scripts/be-local` + `scripts/fe-local`), the
-first-time setup, tests and every endpoint, see the [Runbook](Runbook.md):
-[Run with Docker](Runbook.md#run-with-docker),
-[First-time setup](Runbook.md#first-time-setup-fresh-clone--new-machine),
-[Environment variables](Runbook.md#environment-variables),
-[Run all tests](Runbook.md#run-all-tests),
-[Backend](Runbook.md#backend-backend), [Frontend](Runbook.md#frontend-frontend).
+The Playwright suite needs `npx playwright install chromium` once.
 
-Before you start, check [Known setup gotchas](#known-setup-gotchas).
+## Tests
 
----
+Exact commands and results from the submitted tree (2026-10-19, local Docker Postgres):
 
-## 1. What's included
-
-| Piece | Where |
-|---|---|
-| Sign-up, sign-in, sign-out, `GET /auth/me` (custom cookie sessions) | `backend/src/auth/` |
-| Users: repository + service, username / display-name rules (no HTTP surface of its own) | `backend/src/modules/users/` |
-| HTTP pipeline: helmet, CORS, validation, fail-closed response serialization, one error shape | `backend/src/app.setup.ts`, `backend/src/common/` |
-| Zod-validated environment, SQLite through Prisma 7, demo seed | `backend/src/config/`, `backend/src/database/` |
-| Sign-in, sign-up, sign-out and Home pages; route guards | `frontend/src/pages/`, `frontend/src/routes/` |
-| Auth state (`useAuth()`), API client, Zod form schemas | `frontend/src/lib/` |
-| The full shadcn/ui component library | `frontend/src/components/ui/` |
-| Unit, e2e and browser E2E test setups | `backend/src/**/__tests__/`, `backend/test/`, `frontend/src/**/__tests__/`, `frontend/e2e/` |
-| Docker stack (two production-like images) | `compose.yaml`, `backend/Dockerfile`, `frontend/Dockerfile` |
-| Feature workflow for Claude Code | `.claude/`, `features/`, `knowledge/` |
-
-The Home page is a single card with the signed-in user's display name, `@username`, email and a
-Sign out link. It's the placeholder to replace with the first real feature.
-
----
-
-## 2. Stack and why
-
-**Backend: NestJS 12, Prisma 7, SQLite** (through `@prisma/adapter-better-sqlite3`).
-
-- NestJS gives modules, dependency injection, a global guard, pipes, interceptors and filters out
-  of the box. Those are where auth, validation, response whitelisting and error normalization live,
-  so a feature module only holds its own logic.
-- Prisma gives a typed client generated from one schema file (`backend/prisma/schema.prisma`), so a
-  query can't drift from the model without a type error. Prisma 7 needs an explicit driver adapter,
-  which is wired in `src/database/prisma.service.ts`.
-- The schema is applied with `prisma db push`. There is no migrations folder, which is a
-  prototype-stage choice.
-- Validation uses `class-validator` DTOs, plus Zod for environment variables at boot.
-  Passwords are hashed with `argon2`, `helmet` sets security headers, and `@nestjs/throttler`
-  handles rate limits.
-
-**Why SQLite.**
-
-- **Zero setup.** There's no database server to install or run: clone, `npx prisma db push`, and it
-  works.
-- **Fast, isolated tests.** The e2e suite gets its own file database (`backend/prisma/e2e.db`) and
-  never touches dev data. Running the tests needs no container.
-- **A simpler Docker stack.** There's no separate database container; the database is a file on a
-  named volume.
-
-The cost is one writer at a time (see [limitations](#6-known-limitations)). **Moving to Postgres**
-would be: datasource `provider = "postgresql"`, `@prisma/adapter-pg` instead of the better-sqlite3
-adapter in `PrismaService`, `prisma7.config.ts` and the seed CLI (`src/database/seed/seed.ts`), a
-Postgres service in `compose.yaml`, and migrations instead of `db push` for anything with real
-data. The Prisma queries themselves are provider-neutral.
-
-**Frontend: Vite 8, React 19, strict TypeScript, TanStack Query 5, Tailwind CSS 4, shadcn/ui,
-react-router.**
-
-- Vite for fast dev and a static bundle that nginx serves.
-- TanStack Query owns server state, including the signed-in user (`GET /auth/me`) and a central 401
-  handler in `src/app/query-client.ts`. That keeps components free of hand-rolled
-  fetch/`useEffect` state.
-- shadcn/ui components are copied into `src/components/ui/`, so they are owned code built on Radix
-  accessibility primitives. The project's rule is to reuse one before writing a new component
-  ([decision](knowledge/decisions/shadcn-component-preference.md)).
-- Forms use `react-hook-form` + Zod, and the schemas mirror the backend rules.
-
-**Tests: Vitest on both sides.** The frontend adds React Testing Library and MSW. MSW fakes the API
-at the network layer, so tests go through the real `apiClient`. Playwright drives the real stack in
-Chromium. See [Testing](#4-testing).
-
----
-
-## 3. Authentication
-
-Custom, with no third-party auth provider (`backend/src/auth/`).
-
-- **Passwords.** argon2id (`memoryCost 19456`, `timeCost 2`, `parallelism 1`; `ARGON2_OPTIONS` in
-  `users.service.ts`). Passwords are 12–128 characters at sign-up. The salt is inside the hash
-  string.
-- **Accounts.** Email (trimmed, lowercased, unique), username (trimmed, lowercased, 3–20 characters
-  of `a-z0-9_`, not a reserved word, unique) and a required display name (1–50 characters counted
-  as Unicode code points, no line breaks). The rules live in
-  `backend/src/modules/users/username.rules.ts`; the frontend mirrors them in
-  `frontend/src/lib/validation/`.
-- **Sessions are server-side.** Sign-up and sign-in create a random 32-byte token (base64url). Only
-  its **SHA-256** goes into `Session.tokenHash`, so a database leak doesn't hand out live sessions.
-  Sessions last 7 days from creation; the expiry is fixed, not extended on use. Expired rows are
-  deleted when they are looked up, and swept whenever a new session is created.
-- **Cookie.** `sid`, `httpOnly`, `SameSite=Lax`, `path=/`, and `Secure` only when
-  `NODE_ENV=production`. Docker defaults to `development` because some browsers (Safari) drop
-  `Secure` cookies over plain `http://localhost`. The frontend never sees the token: `apiClient`
-  sends `credentials: 'include'`.
-- **Gated by default.** `AuthGuard` is registered globally (`APP_GUARD`). Every route needs a live
-  session unless it is marked `@Public()`, and only sign-up, sign-in and sign-out are. Handlers read
-  the user with `@CurrentUser()`. A new endpoint is protected without doing anything.
-- **CSRF.** The same guard rejects POST, PUT, PATCH and DELETE whose `Origin` isn't exactly
-  `FRONTEND_ORIGIN` with a 403. This applies to public routes too, which covers login CSRF. A
-  missing `Origin` (non-browser clients) is allowed. `SameSite=Lax` and the exact-origin CORS
-  allowlist add further protection.
-- **No account enumeration on sign-in.** An unknown email and a wrong password both return the same
-  401 `Invalid email or password`. For an unknown email the service still verifies against a dummy
-  argon2 hash (computed at module init), so timing matches too. Sign-up does return 409 for a taken
-  email or username; the rate limit mitigates that.
-- **Rate limits** (`auth/throttlers.ts`). Sign-up and sign-in are limited to 5 per minute per IP,
-  per route (the `auth` throttler). A second named throttler, `user`, keys on the session user's id
-  for signed-in routes: none use it yet, and a new route opts in with `@UseGuards(ThrottlerGuard)`
-  plus `@Throttle({ [USER_THROTTLER]: { limit, ttl: THROTTLE_TTL_MS } })` (default 10 per minute).
-- **Responses fail closed.** Each handler declares `@SerializeOptions({ type: XResponseDto })`, and
-  the global `ResponseSerializerInterceptor` emits only the `@Expose()`d fields. A body without a
-  declared DTO is a 500 instead of an unfiltered object, so a Prisma row (with `passwordHash`) can't
-  leak by accident. All errors go through one `AllExceptionsFilter` into
-  `{ statusCode, message, timestamp, path }`.
-- **Frontend guards.** `ProtectedRoute` wraps everything except `/sign-in`, `/sign-up` and
-  `/sign-out`:
-  - Signed-out visitors go to `/sign-in` and come back to the route they asked for (open redirects
-    are rejected).
-  - `PublicOnlyRoute` sends signed-in users away from the auth pages.
-  - Only a 401 from `/auth/me` means "signed out". A 500 or a network error shows "Couldn't reach
-    the server" with Retry.
-  - A 401 on any other request resets the user and drops cached queries centrally.
-
-**Why sessions and not JWT:**
-
-- Sign-out deletes the session row, so revocation is real and immediate.
-- Nothing readable by JavaScript is ever issued.
-- There is no refresh-token scheme to get right.
-
-The cost is one indexed lookup per request (`tokenHash` is unique), which is negligible here.
-
-Depth: [backend architecture](knowledge/infra/backend-architecture.md),
-[frontend architecture](knowledge/infra/frontend-architecture.md),
-[code quality](knowledge/infra/code-quality.md),
-[UI component inventory](knowledge/infra/ui-component-inventory.md).
-
----
-
-## 4. Testing
-
-| Layer | Where | What |
-|---|---|---|
-| Backend unit | `backend/src/**/__tests__/*.spec.ts` | Services, controllers, guard, DTOs, rules, interceptor, config, seed data. Dependencies are mocked with `Test.createTestingModule`, with no database. |
-| Backend e2e | `backend/test/*.e2e-spec.ts` | The real app through `configureApp()` and supertest, against a dedicated `prisma/e2e.db` that is rebuilt from the schema on every run and deleted afterwards (the seed spec uses its own `prisma/e2e-seed.db`). It never touches `dev.db`. |
-| Frontend | `frontend/src/**/__tests__/*.test.{ts,tsx}` | Vitest, jsdom and React Testing Library. The API is faked with MSW at the network layer, and an unhandled request fails the test. |
-| Browser E2E | `frontend/e2e/*.spec.ts` | Playwright + Chromium against the real stack: the built backend and a Vite dev server on their own ports (3100 / 5174) and their own `prisma/playwright.db`, recreated each run. It never touches `dev.db`. |
-
-- `backend/test/app.e2e-spec.ts` covers the auth flow end to end: sign-up setting the cookie and
-  returning only the response DTO fields, duplicate email or username → 409, sign-in failing
-  identically for an unknown email and a wrong password, `/auth/me` and sign-out managing the
-  session lifecycle, an expired session → 401, a foreign `Origin` → 403 and the sign-in rate limit.
-  `validation.e2e-spec.ts` pins strict request typing and `seed.e2e-spec.ts` the seed.
-- `frontend/e2e/auth.spec.ts` signs up a fresh user in a real browser, lands on Home, signs out,
-  gets sent back to sign-in from a gated URL, and signs in again. A second test checks that a wrong
-  password shows "Invalid email or password".
-
-How to run everything: [Runbook, Run all tests](Runbook.md#run-all-tests).
-
----
-
-## 5. Repository layout
-
-```
-backend/     NestJS API: src/, prisma/schema.prisma, test/ (e2e), Dockerfile, docker-entrypoint.sh
-frontend/    Vite + React SPA: src/, e2e/ (Playwright), Dockerfile, nginx.conf
-compose.yaml the whole stack in Docker
-scripts/     be-local, fe-local, down-be, down-fe, check-env (thin wrappers around npm scripts)
-Runbook.md   how to set up, run and test everything
-knowledge/   architecture and decision docs (infra/, decisions/)
-features/    one feature.md per feature built through the workflow (empty to start)
-.claude/     the Claude Code workflow: skills, agents, review contract
+```text
+$ npm run lint                → exit 0
+$ npm run typecheck           → exit 0   (next typegen && tsc --noEmit)
+$ npm test                    → Test Files 3 passed (3) · Tests 14 passed (14)
+$ npm run test:integration    → Test Files 1 passed (1) · Tests 26 passed (26)
+$ npm run test:e2e            → 3 passed (10.3s)
 ```
 
-```
-backend/src/
-  auth/            sign-up/in/out, sessions, global AuthGuard, @Public(), @CurrentUser(), throttlers
-  modules/users/   UsersRepository, UsersService, username / display-name rules, UserResponseDto
-  common/          AllExceptionsFilter, ResponseSerializerInterceptor
-  config/          configuration + Zod env validation
-  database/        PrismaService (SQLite adapter), seed
-  app.setup.ts     HTTP pipeline shared by main.ts and the e2e suite
-
-frontend/src/
-  app/             App, router, providers, query client (central 401 handling)
-  routes/          ProtectedRoute, PublicOnlyRoute
-  pages/           Home, SignIn, SignUp, SignOut
-  components/      ui/ (shadcn), AuthLayout, BrandMark
-  lib/api/         apiClient (fetch, credentials: 'include'), error messages, response types
-  lib/auth/        AuthProvider, useAuth(), redirect target
-  lib/validation/  Zod schemas mirroring the backend rules
-  test/            MSW server + default handlers, renderWithProviders
-```
-
----
-
-## 6. Known limitations
-
-- **Single instance only.** The rate-limit counters (`@nestjs/throttler`'s default storage) are
-  per process, and SQLite allows one writer at a time. Fine for one container; it rules out
-  horizontal scaling as built.
-- **No migrations.** `prisma db push` only. A change that would lose data needs a reset (locally
-  delete `backend/prisma/dev.db*` and push again; in Docker `docker compose down -v`).
-- **Throttling by IP without `trust proxy`.** Behind a reverse proxy every client would share one
-  sign-in/sign-up bucket.
-- **Auth is minimal.** No password reset, no email verification, and no lockout beyond the rate
-  limit. Sessions last 7 days from sign-in, with no "remember me" option and no list of active
-  sessions. There is no endpoint to change a username, display name or password.
-
-Also see [`.claude/ROADMAP.md`](.claude/ROADMAP.md).
-
-### Known setup gotchas
-
-The [Runbook](Runbook.md) is the source for the steps; these are the things most likely to trip a
-fresh setup.
-
-- **Node version.** Use Node ^22.12 (22 LTS, pinned in `.nvmrc`), 24 or 26+. Older versions fail:
-  the frontend's Vitest and the backend's `better-sqlite3` require them. `engines` in both
-  `package.json` files and `scripts/check-env` enforce the same range.
-- **Native build.** `npm install` in `backend/` compiles `better-sqlite3` from source, so it needs a
-  C/C++ toolchain (Xcode Command Line Tools on macOS, `build-essential` + `python3` on Linux).
-- **Docker is the zero-setup path.** It needs no host Node, npm or Prisma step.
-- **Browser E2E needs Chromium and free ports.** Run `npx playwright install chromium` once in
-  `frontend/`, and keep ports 3100 and 5174 free: the suite starts its own servers there.
+- **`test:integration`: the authorization boundary.**
+  - **What runs:** `tests/integration/projects-authz.test.ts` calls the **real exported route
+    handlers**, using session cookies from a **real Better Auth sign-in**, against the **real
+    `tenantdesk_test` Postgres**. It's reset and seeded before every run. Nothing is mocked.
+  - **Cases:**
+    - Unauthenticated access and a forged session cookie get 401.
+    - Cross-tenant reads and writes get 404, in both directions and through both URL shapes.
+    - Viewer writes get 403.
+    - Seven kinds of invalid input get 400, a non-JSON body gets 415, and a duplicate name gets 409.
+    - Successful create and rename each write exactly one correct audit row.
+    - A same-name rename changes nothing and writes no audit row.
+    - **Atomicity:** a temporary DB trigger makes the audit insert fail, and the test asserts the
+      rename rolled back.
+    - **DB constraints alone:** a cross-tenant audit row and a blank name are each refused even
+      when the app is bypassed.
+    - Sign-up is refused.
+  - **Every denied write** asserts that no project changed and no audit row was added.
+  - **Mutation-checked:** removing the role check, or the tenant filter on project lookups, makes
+    the suite fail.
+- **`test:e2e`** (Playwright against `next build && next start` on the test DB):
+  - A signed-out user is redirected; a wrong password is rejected.
+  - Ada creates a project (validation and duplicate-name states included), renames it, then gets
+    "not found" for Globex in both the UI and the API.
+  - Vic sees no write controls, and a forced POST returns 403.
+- **`npm test`:** unit tests for the shared Zod schema and the role logic in `requireMembership`
+  (repository mocked).
+- **Deployed smoke:** `scripts/smoke-authz https://kd-challenge.vercel.app` (needs
+  `SEED_USER_PASSWORD`). Output is in [Deployment](#deployment).
 
 ---
 
-## 7. Adding a feature
+## How authorization works
 
-The repo ships with a Claude Code workflow ([`.claude/WORKFLOW.md`](.claude/WORKFLOW.md)) of four
-phases, one skill each:
+**Application authorization is the boundary; the database enforces tenant consistency. RLS is
+not used.** (Decision record: [`knowledge/decisions/tenancy-authorization.md`](knowledge/decisions/tenancy-authorization.md).)
 
-| Phase | Skill | What happens |
-|---|---|---|
-| Frame | [`/feature`](.claude/skills/feature/SKILL.md) | Agree the slug and scope, then write `features/<slug>/feature.md` with the touched surface and acceptance criteria. |
-| Build | [`/implement`](.claude/skills/implement/SKILL.md) | Split the plan into tasks and run them through an `implementer` → `reviewer` loop, up to 3 independent tasks in parallel, never two on overlapping files. |
-| Verify | [`/review-feature`](.claude/skills/review-feature/SKILL.md) | Run the real app and check each acceptance criterion against it, then stop the servers. Anything wrong goes back to Build. |
-| Close | [`/close-feature`](.claude/skills/close-feature/SKILL.md) | Write the tests the change needs, open the PR, run a [`/review-pr`](.claude/skills/review-pr/SKILL.md) pass, and merge only on an explicit go-ahead. |
+1. **Identity is resolved on the server** on every request:
+   `auth.api.getSession({ headers })` inside `requireSession`. No session → **401**.
+2. **The tenant in the URL is a request, not authorization.** `requireMembership(user, slug,
+   minRole)` in `src/server/tenancy/tenancy.service.ts` looks up the session user's membership in
+   that tenant. If there's no membership, or no such tenant, the answer is **404**, with an
+   identical body either way so tenant existence doesn't leak. A member whose role is too low
+   gets **403**. The membership-derived `tenantId` is the only tenant id the repositories ever
+   receive; a `tenantId` in a request body is rejected (strict schema → 400).
+3. **Every query on tenant-owned rows filters by `tenantId`** (`where: { id, tenantId }`). A
+   project id from another tenant under your own tenant's URL → 404.
+4. **Write + audit are one transaction** (`db.$transaction`). If the audit insert fails, the
+   project change rolls back (tested).
+5. **Database constraints:**
+   - The composite FK `AuditEntry(tenantId, projectId) → Project(tenantId, id)` makes a
+     cross-tenant audit row impossible.
+   - A unique index on `("tenantId", lower("name"))` makes names unique per tenant, ignoring case.
+   - A `CHECK` requires 1–80 non-blank characters.
+   - `Membership` has the primary key `(tenantId, userId)`.
+   - Every tenant-owned index starts with `tenantId`.
 
-- **Agents.** [`implementer`](.claude/agents/implementer.md) implements exactly one task or stops
-  with `BLOCKED`. [`reviewer`](.claude/agents/reviewer.md) is read-only and approves or rejects
-  against the task; a fresh reviewer is spawned for every review.
-- **Review contract.** [`.claude/review-contract.md`](.claude/review-contract.md) is one rulebook:
-  severities, "a finding names a file and line", and stack rules such as repository-only Prisma
-  access, response DTOs on every endpoint, and no unrequested `@Public()`.
-- **Shared context.** [`knowledge/`](knowledge/README.md) holds the architecture docs agents read
-  before writing code. [`.claude/CONVENTIONS.md`](.claude/CONVENTIONS.md) covers commit format,
-  when to stop and ask, and leaving no dev servers running.
+   See `prisma/migrations/20261020045913_tenancy_projects_audit/migration.sql`.
+6. **The UI** hides write controls for viewers as a convenience. The server is the control.
+   Next's `proxy.ts` is not used for authorization.
 
-Without the workflow, the short version is: a backend feature is a module under
-`backend/src/modules/<name>/` (controller → service → repository, request and response DTOs in
-`dto/`), imported by `app.module.ts`; a frontend feature is a page under `frontend/src/pages/`
-registered in `src/app/router.tsx` inside `ProtectedRoute`, with its data through TanStack Query
-and `apiClient`, and its response types in `src/lib/api/types.ts`.
+**Why not RLS (yet):**
+- **What it would take:** RLS with Prisma on pooled Neon connections needs a non-owner role,
+  `FORCE ROW LEVEL SECURITY`, and `set_config('app.tenant_id', …, true)` inside every
+  transaction, reads included.
+- **Why I left it out:** a half-configured RLS setup is worse than none, because it reads as
+  protection it doesn't give.
+- **Where it stands:** the app-level choke point plus the DB constraints are tested against the
+  real database. RLS is the first item under limitations.
+
+## Architecture
+
+```text
+src/app/api/**/route.ts        thin handlers: requireSession → Zod (.strict) → one service call → DTO
+src/server/tenancy/            requireSession / requireMembership (the choke point), membership repository
+src/server/projects/           service (authz, transaction, conflicts) → repository (only Prisma access) → DTO mapper
+src/server/audit/              audit repository (always called with the transaction client)
+src/server/http.ts             one error shape {error:{code,message,fieldErrors?}}, JSON-only writes
+src/server/auth.ts             Better Auth (Prisma adapter, sign-up disabled)
+src/lib/schemas/project.ts     Zod schema shared by forms and handlers
+src/components/projects/       list, create/rename form, tenant switcher (TanStack Query)
+prisma/                        schema, migrations, seed
+tests/integration/, e2e/       authorization matrix, browser tests
+```
+
+API: `GET /api/me/tenants`, `GET|POST /api/tenants/:slug/projects`,
+`PATCH /api/tenants/:slug/projects/:projectId`. Errors: 400 `VALIDATION_ERROR`,
+401 `UNAUTHENTICATED`, 403 `FORBIDDEN`, 404 `NOT_FOUND`, 409 `NAME_TAKEN`,
+415 `UNSUPPORTED_MEDIA_TYPE`, 500 `INTERNAL` (never a stack trace or SQL).
+
+## Deployment
+
+- **Hosting:** Vercel, with Neon Postgres added through Vercel's integration.
+- **Build:** `scripts/vercel-build` runs `prisma migrate deploy`, then the idempotent seed (only
+  when `SEED_USER_PASSWORD` is set), then `next build`.
+- **Why the seed runs in the build:** the integration's variables are Sensitive, so they can't be
+  pulled to a local shell to seed from there.
+- **Access:** Deployment Protection is off, so the reviewer can reach the app.
+
+_Deployed smoke output: see [Submitted commit](#submitted-commit)._
+
+## Limitations (honest)
+
+- **No RLS.** Tenant isolation rests on the app's authorization choke point and the DB constraints
+  above.
+- **No invitations, sign-up, member or role management, password reset, or email.** `admin` has no
+  powers beyond `editor`.
+- **No audit-log UI and no pagination or search.** Audit rows exist in the DB only.
+- **One Neon database** serves both Preview and Production, so every branch's migrations and seed
+  land in it.
+- **The seed resets the three seed users' passwords** to `SEED_USER_PASSWORD` on every deploy.
+- **Rate limiting** is Better Auth's built-in sign-in limit only.
+- **Pages are client-rendered:** they render a shell, then fetch from the API. The not-member view
+  is an in-page "Organization not found", not an HTTP 404 document. The API does return 404.
+- **Workflow shortcut:** the slice was built directly in one Claude Code session rather than
+  through the repo's implementer/reviewer agent loop (see the AI log), and there's no
+  `features/tenantdesk/feature.md`.
+- **Minimal styling:** plain Tailwind, not the shadcn primitives the repo's conventions prefer.
+
+## Submitted commit
+
+_Filled in after merge._

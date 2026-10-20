@@ -2,7 +2,7 @@
 title: Deployment — Vercel + Neon
 type: infra
 summary: How TenantDesk is deployed — Vercel preview, Neon Postgres provisioned through the Vercel integration, env vars, migrations at build, manual seed, Deployment Protection, and how to report a failed deploy. Target state; mark "active" after the first successful deploy.
-status: planned
+status: active
 last-verified: 2026-10-19
 tags: [deploy, vercel, neon, postgres, env, migrations]
 ---
@@ -31,18 +31,20 @@ Browser ──► Vercel (Next.js, Node runtime functions) ──► Neon Postgr
 | `DATABASE_URL_UNPOOLED` | Neon integration | direct, for migrations |
 | `BETTER_AUTH_SECRET` | `openssl rand -base64 32` | never committed |
 | `BETTER_AUTH_URL` | stable preview alias | also in Better Auth `trustedOrigins` |
-| `SEED_USER_PASSWORD` | local shell only | **not** set in Vercel; used once to seed |
+| `SEED_USER_PASSWORD` | chosen by Alejandro | Sensitive, Preview + Production; the build seeds when it's set |
 
 Local `.env.example` lists every var with placeholder values. `.env*` (except `.env.example`) is
 gitignored.
 
 ## Build & release
 
-- Build command: `prisma generate && prisma migrate deploy && next build`.
-- Seed once, from a local shell:
-  `vercel env pull .env.preview.local --environment=preview` then
-  `SEED_USER_PASSWORD=… npx dotenv -e .env.preview.local -- npx prisma db seed`.
-  Log the command + redacted output in the submission.
+- Build: `npm run vercel-build` → `scripts/vercel-build`: `prisma generate`, `prisma migrate
+  deploy`, the idempotent seed (only if `SEED_USER_PASSWORD` is set), `next build`.
+- **The Neon integration's variables are Sensitive** — `vercel env pull` returns placeholders, so
+  nothing can reach Neon from a local shell with pulled env. That's why seeding happens in the
+  build. To run SQL against Neon by hand, copy the connection string from the Neon console.
+- Preview and Production share **one** Neon database (the integration wires both to it), so every
+  branch's migrations land there.
 - Deployment Protection: off for Preview, or a bypass link shared privately with the reviewer.
 - Verify: `scripts/smoke-authz <preview-url>` (401 / cross-tenant 404 / viewer 403).
 

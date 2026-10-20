@@ -5,25 +5,31 @@ starting conditions comparable and honest. See [`build-spec.md`](build-spec.md) 
 
 ## Previous code
 
-- Prior NestJS + Vite starter lived at commit: `<sha>` (removed/archived in commit `<sha>`).
+- Prior NestJS + Vite starter lived at commit: `b52cb704c3c052d58658c6eb757cf8db1d947387` (removed in the next commit on branch `pre-timer-starter`).
 
 ## Starter
 
 | Item | Value |
 |---|---|
-| Framework starter command | `npx create-next-app@<version> ...` |
-| Next.js / React / TypeScript versions | |
-| Auth starter | Better Auth `<version>` — email + password, Prisma adapter (docs URL followed: ) |
-| Prisma version | |
-| Node version | |
-| Starter commit SHA (timer start) | |
-| Bare starter preview URL | |
+| Framework starter command | `npx create-next-app@16.4.2 tenantdesk --ts --app --tailwind --eslint --src-dir --import-alias "@/*" --use-npm --skip-install --yes` (scaffolded in a temp dir, files moved to the repo root) |
+| Next.js / React / TypeScript versions | 16.4.2 / 19.3.0 / 5.9.3 |
+| Auth starter | Better Auth 1.7.11 — email + password, Prisma adapter, `nextCookies()`; schema from `npx auth@1.7.11 generate`; one migration `better_auth_init` |
+| Prisma version | 7.10.1 + `@prisma/adapter-pg` 7.10.1, `pg` 8.23.1 |
+| Node version | 24.3.0 (npm 11.4.2) |
+| Starter commit SHA (timer start) | `408a261d44eb8963c2071aea570f52feb947fa00` (branch `pre-timer-starter`) |
+| Bare starter deployment | https://kd-challenge-6k3hqh6wx-alejandrogomezes-projects.vercel.app (built from `408a261`; went to Production as the project's first deploy). Its `/api/auth/*` returned 500 until `BETTER_AUTH_SECRET` was added in Vercel — the pre-timer setup was still finishing that when the timer started. |
 
 ## What existed before the timer
 
-- Next.js app with Better Auth sign-in page and its tables only (one migration).
+- Next.js app (create-next-app defaults, incl. `cacheComponents: true`) with Better Auth wired at
+  `/api/auth/[...all]`, a bare `/sign-in` page (sign in / show email / sign out) and a home page
+  linking to it. Better Auth's four tables are the only migration. Sign-up is still enabled
+  (Better Auth default). Verified locally against `next start`: sign-up 200, wrong password 401,
+  sign-in 200, session returns the user, sign-out 200 then session `null` (throwaway user deleted).
 - Local Postgres via `compose.yaml`; Neon database attached through Vercel.
-- Vitest + Playwright installed, one trivial test each.
+- Vitest 5.0.5 (1 file / 1 test passing) + Playwright 1.64.1 with Chromium (1 test passing:
+  home → sign-in). `npm run typecheck`, `npm run lint`, `npm run build` clean.
+- `CLAUDE.md` importing Next's generated `AGENTS.md` ("read the bundled docs").
 - `.claude/` feature workflow, `knowledge/` architecture docs and `docs/build-spec.md` —
   written with AI assistance (Claude Code) before the timer. No tenant, project, audit,
   seed or authorization code.
@@ -40,5 +46,5 @@ starting conditions comparable and honest. See [`build-spec.md`](build-spec.md) 
 
 ## Timer
 
-- Started: `<date time TZ>`
+- Started: 2026-10-19 22:58 CST (recorded by the assistant from `date` when the start was announced)
 - Ended: `<date time TZ>`

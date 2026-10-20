@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Vercel build: migrate, seed (only when SEED_USER_PASSWORD is configured for the environment),
+# then build. The seed is idempotent (upserts), so re-running it on every deploy is safe; it also
+# resets the three seed users' passwords to SEED_USER_PASSWORD.
+set -euo pipefail
+npx prisma generate
+npx prisma migrate deploy
+if [ -n "${SEED_USER_PASSWORD:-}" ]; then
+  npx tsx prisma/seed.ts
+else
+  echo "SEED_USER_PASSWORD not set — skipping seed."
+fi
+npx next build

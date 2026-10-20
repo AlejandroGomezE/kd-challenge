@@ -167,8 +167,8 @@ README states exactly which one shipped — never claim RLS that isn't enforced 
   slice — no member management.) Insufficient role → **403**.
 - **Object scoping** — `projectId` lookups are always `where: { id, tenantId }`. A project from
   another tenant under your own tenant's URL → **404**.
-- **Middleware** may redirect signed-out page visits for UX; it is **never** an authorization
-  layer. Every route handler and server component checks for itself.
+- **Proxy** (`src/proxy.ts`, Next 16's renamed middleware) may redirect signed-out page visits for
+  UX; it is **never** an authorization layer. Every route handler and server component checks for itself.
 - **CSRF** — writes require `Content-Type: application/json` (rejected otherwise, 415); session
   cookie is `HttpOnly`, `SameSite=Lax`, `Secure` in production (Better Auth defaults).
 
@@ -273,8 +273,11 @@ into the submission.
 - Env (Preview): `DATABASE_URL`, `DATABASE_URL_UNPOOLED` (from the Neon integration),
   `BETTER_AUTH_SECRET` (generated, never committed), `BETTER_AUTH_URL` = the stable preview
   alias; trusted origins include it.
-- Seed once from a local shell with `vercel env pull .env.preview.local` →
-  `dotenv -e .env.preview.local -- npx prisma db seed`. Log the command and the output (redacted).
+- Seed during the Vercel build (`scripts/vercel-build`): idempotent, runs only when
+  `SEED_USER_PASSWORD` is set for the environment (stored as a Sensitive Vercel variable).
+  *Changed during the build:* the original plan (seed from a local shell after `vercel env pull`)
+  can't work because the Neon integration's variables are Sensitive and `vercel env pull` returns
+  placeholders for them.
 - Deployment Protection off for the preview, or share a bypass link privately.
 - If deployment fails: keep the repo, write reproduction commands and the exact failure output
   (build log excerpt) in the submission — don't paper over it.

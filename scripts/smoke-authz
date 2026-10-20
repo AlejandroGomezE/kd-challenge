@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Runs the reviewer's attacks against a running TenantDesk (local or deployed):
+#   scripts/smoke-authz https://kd-challenge.vercel.app
+# Needs SEED_USER_PASSWORD in the environment (or in .env). Read-only except the viewer write,
+# which must be refused. Exits non-zero if any check fails.
+set -euo pipefail
+
+BASE="${1:?usage: scripts/smoke-authz <base-url>}"
+BASE="${BASE%/}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -z "${SEED_USER_PASSWORD:-}" ] && [ -f "$REPO_ROOT/.env" ]; then
+  SEED_USER_PASSWORD="$(grep -E '^SEED_USER_PASSWORD=' "$REPO_ROOT/.env" | cut -d= -f2-)"
+fi
+: "${SEED_USER_PASSWORD:?SEED_USER_PASSWORD is not set}"
+
+WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+failures=0
+
+check() { # check <label> <expected> <actual>
+  if [ "$2" = "$3" ]; then printf '  PASS  %-58s %s\n' "$1" "$3"
+  else printf '  FAIL  %-58s expected %s, got %s\n' "$1" "$2" "$3"; failures=$((failures + 1)); fi
+}
+
+sign_in() { # sign_in <email> <cookie-jar> → http status
+  curl -s -o /dev/null -w '%{http_code}' -c "$2" -H 'Content-Type: application/json' -H "Origin: $BASE" \
+    -d "{\"email\":\"$1\",\"password\":\"$SEED_USER_PASSWORD\"}" "$BASE/api/auth/sign-in/email"
+}
+status() { # status <jar|-> <method> <path> [json-body]
+  local args=(-s -o /dev/null -w '%{http_code}' -X "$2" -H "Origin: $BASE")
+  [ "$1" != "-" ] && args+=(-b "$1")
+  [ -n "${4:-}" ] && args+=(-H 'Content-Type: application/json' -d "$4")
+  curl "${args[@]}" "$BASE$3"
+}
+
+echo "TenantDesk authorization smoke — $BASE"
+check "no session: GET /api/tenants/acme/projects" 401 "$(status - GET /api/tenants/acme/projects)"
+check "no session: POST /api/tenants/acme/projects" 401 "$(status - POST /api/tenants/acme/projects '{"name":"x"}')"
+
+ADA="$WORK/ada"; VIC="$WORK/vic"
+check "sign in Ada (Acme admin)" 200 "$(sign_in ada@acme.test "$ADA")"
+check "sign in Vic (Acme viewer)" 200 "$(sign_in vic@acme.test "$VIC")"
+
+GLOBEX_ID="$(curl -s -b "$ADA" "$BASE/api/tenants/globex/projects" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
+check "Ada can't see any Globex project id" "" "$GLOBEX_ID"
+check "Ada: GET Acme projects" 200 "$(status "$ADA" GET /api/tenants/acme/projects)"
+check "Ada: GET Globex projects" 404 "$(status "$ADA" GET /api/tenants/globex/projects)"
+check "Ada: POST into Globex" 404 "$(status "$ADA" POST /api/tenants/globex/projects '{"name":"Planted"}')"
+check "Ada: client-supplied tenantId is rejected" 400 "$(status "$ADA" POST /api/tenants/acme/projects '{"name":"x","tenantId":"globex"}')"
+check "Ada: invalid name" 400 "$(status "$ADA" POST /api/tenants/acme/projects '{"name":"  "}')"
+
+ACME_ID="$(curl -s -b "$VIC" "$BASE/api/tenants/acme/projects" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+check "Vic: GET Acme projects" 200 "$(status "$VIC" GET /api/tenants/acme/projects)"
+check "Vic: POST (viewer write)" 403 "$(status "$VIC" POST /api/tenants/acme/projects '{"name":"Viewer write"}')"
+check "Vic: PATCH (viewer write)" 403 "$(status "$VIC" PATCH "/api/tenants/acme/projects/$ACME_ID" '{"name":"Viewer write"}')"
+
+echo
+[ "$failures" -eq 0 ] && echo "All checks passed." || { echo "$failures check(s) failed."; exit 1; }

@@ -58,12 +58,21 @@ stop_dev() {
     for child in $(pgrep -P "$1" 2>/dev/null); do with_descendants "$child"; done
   }
 
+  # Next.js renames its server process to `next-server (vX.Y.Z)`, so its command line has no path;
+  # match it by working directory instead.
+  next_server_pids() {
+    local pid
+    for pid in $(pgrep -f '^next-server' 2>/dev/null); do
+      [ "$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')" = "${1%/}" ] && echo "$pid"
+    done
+  }
+
   local pids="" pid
-  for pid in $(repo_node_pids "$dir/node_modules/"); do pids="$pids $(with_descendants "$pid")"; done
+  for pid in $(repo_node_pids "$dir/node_modules/") $(next_server_pids "$dir"); do pids="$pids $(with_descendants "$pid")"; done
   if [ -z "${pids// /}" ]; then
     echo "No $label dev processes running."
   else
-    for pid in $(repo_node_pids "$dir/node_modules/"); do echo "Stopping pid $pid: $(ps -o args= -p "$pid" 2>/dev/null)"; done
+    for pid in $(repo_node_pids "$dir/node_modules/") $(next_server_pids "$dir"); do echo "Stopping pid $pid: $(ps -o args= -p "$pid" 2>/dev/null)"; done
     # shellcheck disable=SC2086
     kill -TERM $pids 2>/dev/null || true
     sleep 1

@@ -100,7 +100,7 @@ Reference: `knowledge/decisions/tenancy-authorization.md`. Everything here is a 
 - A non-member getting anything but 404, a wrong-role member getting anything but 403, no session
   getting anything but 401 — or a response that distinguishes "tenant doesn't exist" from "not a
   member".
-- Relying on Next.js middleware as the authorization check.
+- Relying on Next.js proxy (`src/proxy.ts`, formerly middleware) as the authorization check.
 - A new endpoint without rows in the integration authorization matrix (401 / cross-tenant 404 /
   viewer 403 / invalid 400 / success with audit assertion).
 - Documentation claiming RLS (or any control) that the code/migrations don't actually enforce.

@@ -27,7 +27,7 @@ tags: [tenancy, authorization, security, rls, postgres, roles]
    - object id that isn't in the active tenant → **404**
 5. **One choke point:** `requireSession` + `requireMembership(user, slug, minRole)` in
    `src/server/tenancy/tenancy.service.ts`. Every route handler and server component goes through
-   it. Middleware is never relied on for authorization.
+   it. Next's proxy (`src/proxy.ts`, formerly middleware) is never relied on for authorization.
 6. **Database enforces tenant consistency**, independent of app code: composite FK
    `AuditEntry(tenantId, projectId) → Project(tenantId, id)`, unique `(tenantId, lower(name))`,
    Membership PK `(tenantId, userId)`, `tenantId` leading every tenant-owned index.
