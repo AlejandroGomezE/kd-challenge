@@ -273,8 +273,11 @@ into the submission.
 - Env (Preview): `DATABASE_URL`, `DATABASE_URL_UNPOOLED` (from the Neon integration),
   `BETTER_AUTH_SECRET` (generated, never committed), `BETTER_AUTH_URL` = the stable preview
   alias; trusted origins include it.
-- Seed once from a local shell with `vercel env pull .env.preview.local` →
-  `dotenv -e .env.preview.local -- npx prisma db seed`. Log the command and the output (redacted).
+- Seed during the Vercel build (`scripts/vercel-build`): idempotent, runs only when
+  `SEED_USER_PASSWORD` is set for the environment (stored as a Sensitive Vercel variable).
+  *Changed during the build:* the original plan (seed from a local shell after `vercel env pull`)
+  can't work because the Neon integration's variables are Sensitive and `vercel env pull` returns
+  placeholders for them.
 - Deployment Protection off for the preview, or share a bypass link privately.
 - If deployment fails: keep the repo, write reproduction commands and the exact failure output
   (build log excerpt) in the submission — don't paper over it.
